@@ -1,0 +1,333 @@
+// lib/game/snake_engine.dart
+import 'dart:math';
+import 'dart:ui';
+import 'package:flame/game.dart';
+import 'package:flame/events.dart';
+import 'package:flutter/material.dart'
+    show Color, TextPainter, TextStyle, TextDirection, Colors;
+import '../components/food.dart';
+import '../components/snake_player.dart';
+import '../components/snake_bot.dart';
+import '../services/score_service.dart';
+import '../services/audio_service.dart';
+import '../utils/constants.dart';
+
+import 'engine_camera.dart';
+import 'engine_collision.dart';
+import 'engine_food.dart';
+import 'engine_render.dart';
+import 'engine_leaderboard.dart';
+
+class RespawnTask {
+  final SnakeBot bot;
+  double timeRemaining;
+  RespawnTask({required this.bot, required this.timeRemaining});
+}
+
+class GrassBlade {
+  final double wx, wy, size;
+  final bool dark;
+  const GrassBlade({
+    required this.wx,
+    required this.wy,
+    required this.size,
+    required this.dark,
+  });
+}
+
+class SnakeEngine extends FlameGame with DragCallbacks {
+  // ─── Mundo ───────────────────────────────────────────────────
+  final Vector2 worldSize = Vector2(kWorldWidth, kWorldHeight);
+  Vector2 cameraOffset = Vector2.zero();
+
+  // ─── Componentes ─────────────────────────────────────────────
+  late SnakePlayer player;
+  final List<SnakeBot> bots = [];
+  final List<Food> foods = [];
+
+  // ─── Estado ──────────────────────────────────────────────────
+  int _skinIndex = 0;
+  int get skinIndex => _skinIndex;
+
+  dynamic get leader {
+    dynamic best;
+    int bestLen = 0;
+    if (player.isAlive && player.length > bestLen) {
+      best = player;
+      bestLen = player.length;
+    }
+    for (final b in bots) {
+      if (b.isAlive && b.length > bestLen) {
+        best = b;
+        bestLen = b.length;
+      }
+    }
+    return best;
+  }
+
+  final List<RespawnTask> respawnQueue = [];
+  final Random rng = Random();
+
+  // ─── Sistema de reviver ─────────────────────────────────
+  int revivesUsed = 0;
+  static const int kMaxRevives = 3;
+
+  // ─── Grama ───────────────────────────────────────────────────
+  late final List<GrassBlade> grassBlades;
+
+  // ─── Paints — fundo ──────────────────────────────────────────
+  final Paint bgPaint = Paint()..color = const Color(0xFF2D5A2D);
+  final Paint grassDarkPaint = Paint()..color = const Color(0xFF2A5228);
+  final Paint grassLightPaint = Paint()..color = const Color(0xFF4CAF50);
+  final Paint gridPaint = Paint()
+    ..color = kColorGrid
+    ..strokeWidth = 0.5;
+  final Paint bladeDark = Paint()
+    ..color = const Color(0xFF2A5C2A)
+    ..strokeCap = StrokeCap.round;
+  final Paint bladeLight = Paint()
+    ..color = const Color(0xFF4A8C3F)
+    ..strokeCap = StrokeCap.round;
+
+  // ─── Paints — muro ───────────────────────────────────────────
+  final Paint wallBase = Paint()..color = const Color(0xFF5D4037);
+  final Paint wallBrick = Paint()..color = const Color(0xFF4E342E);
+  final Paint wallHighlight = Paint()
+    ..color = const Color(0xFF795548)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.0;
+  final Paint wallShadow = Paint()..color = const Color(0x88000000);
+
+  // ─── Paints — minimap ────────────────────────────────────────
+  final Paint minimapBg = Paint()..color = const Color(0x00000000);
+  final Paint minimapBorder = Paint()
+    ..color = const Color(0x2200FF88)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1;
+  final Paint minimapPlayer = Paint()..color = kPlayerColor;
+  final Paint minimapBot = Paint();
+  final Paint minimapFood = Paint()..color = const Color(0x99FFFFFF);
+  final Paint minimapViewport = Paint()
+    ..color = const Color(0x33FFFFFF)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1;
+
+  // ─── Paints — leaderboard ─────────────────────────────────────
+  final Paint lbBg = Paint()..color = const Color(0x00000000);
+  final Paint lbBorder = Paint()
+    ..color = const Color(0x1100FF88)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1;
+
+  // ─── TextPainters — leaderboard ──────────────────────────────
+  late TextPainter lbTitlePainter;
+  final List<TextPainter> lbEntryPainters = [];
+
+  // ─── Throttle ────────────────────────────────────────────────
+  double _collisionTimer = 0.0;
+  static const double _collisionInterval = 1.0 / 20.0;
+  double _lbUpdateTimer = 0.0;
+  double attractTimer = 0.0;
+  static const double _lbUpdateInterval = 1.0;
+
+  // ═══════════════════════════════════════════════════════════ //
+  //  onLoad                                                      //
+  // ═══════════════════════════════════════════════════════════ //
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    await ScoreService.instance.init();
+    await AudioService.instance.init();
+    _skinIndex = ScoreService.instance.selectedSkinIndex;
+
+    grassBlades = _generateGrass();
+    buildLbTitle();
+
+    player = SnakePlayer(engine: this, skin: kPlayerSkins[_skinIndex]);
+    player.name = ScoreService.instance.playerName;
+    add(player);
+
+    for (int i = 0; i < kBotCount; i++) {
+      final colors = kBotPalette[i % kBotPalette.length];
+      final personality =
+          BotPersonality.values[i % BotPersonality.values.length];
+      final bot = SnakeBot(
+        botId: i,
+        name: kBotNames[i % kBotNames.length],
+        engine: this,
+        bodyColor: colors[0],
+        bodyColorDark: colors[1],
+        personality: personality,
+      );
+      bots.add(bot);
+      add(bot);
+    }
+
+    spawnCommonFood(kCommonFoodCount);
+    overlays.add(kOverlayMainMenu);
+    pauseEngine();
+  }
+
+  List<GrassBlade> _generateGrass() {
+    final list = <GrassBlade>[];
+    const double spacing = 200.0;
+    for (double wx = 0; wx < kWorldWidth; wx += spacing) {
+      for (double wy = 0; wy < kWorldHeight; wy += spacing) {
+        final double jx = (rng.nextDouble() - 0.5) * spacing * 0.85;
+        final double jy = (rng.nextDouble() - 0.5) * spacing * 0.85;
+        list.add(GrassBlade(
+          wx: wx + jx,
+          wy: wy + jy,
+          size: 5.0 + rng.nextDouble() * 9.0,
+          dark: rng.nextBool(),
+        ));
+      }
+    }
+    return list;
+  }
+
+  // ─── API pública ─────────────────────────────────────────────
+  void setSkin(int index) {
+    _skinIndex = index.clamp(0, kPlayerSkins.length - 1);
+    ScoreService.instance.saveSkinIndex(_skinIndex);
+    if (player.isAlive) player.updateSkin(kPlayerSkins[_skinIndex]);
+  }
+
+
+  /// Revive o player no centro do mapa com segmentos iniciais.
+  void revivePlayer() {
+    revivesUsed++;
+    player.revive(worldSize / 2);
+    overlays.remove(kOverlayRevive);
+    overlays.add(kOverlayHud);
+    resumeEngine();
+  }
+  void handlePlayerDeath() {
+    if (!player.isAlive) return;
+    player.die();
+    ScoreService.instance.submitScore(player.score);
+    ScoreService.instance
+        .processRewards(player.foodEaten); // ← processa recompensas
+    overlays.remove(kOverlayHud);
+    overlays.add(kOverlayGameOver);
+  }
+
+  void scheduleBotRespawn(SnakeBot bot, {double delay = kBotRespawnDelay}) {
+    respawnQueue.add(RespawnTask(bot: bot, timeRemaining: delay));
+  }
+
+  void startGame() {
+    ScoreService.instance.resetRewardsFlag();
+    revivesUsed = 0; // ← reseta flag de recompensas
+    overlays.remove(kOverlayMainMenu);
+    overlays.remove(kOverlayGameOver);
+    overlays.add(kOverlayHud);
+    resumeEngine();
+  }
+
+  void restartGame() {
+    // Food não é Component, só limpa a lista
+    foods.clear();
+
+    // Remove bots
+    for (final b in List<SnakeBot>.from(bots)) {
+      remove(b);
+    }
+    bots.clear();
+    respawnQueue.clear();
+    lbEntryPainters.clear();
+
+    remove(player);
+
+    Future.microtask(() {
+      player = SnakePlayer(engine: this, skin: kPlayerSkins[_skinIndex]);
+      player.name = ScoreService.instance.playerName;
+      add(player);
+
+      for (int i = 0; i < kBotCount; i++) {
+        final colors = kBotPalette[i % kBotPalette.length];
+        final personality =
+            BotPersonality.values[i % BotPersonality.values.length];
+        final bot = SnakeBot(
+          botId: i,
+          name: kBotNames[i % kBotNames.length],
+          engine: this,
+          bodyColor: colors[0],
+          bodyColorDark: colors[1],
+          personality: personality,
+        );
+        bots.add(bot);
+        add(bot);
+      }
+      spawnCommonFood(kCommonFoodCount);
+      startGame();
+    });
+  }
+
+  void _processRespawnQueue(double dt) {
+    for (final task in List<RespawnTask>.from(respawnQueue)) {
+      task.timeRemaining -= dt;
+      if (task.timeRemaining <= 0) {
+        task.bot.respawn();
+        respawnQueue.remove(task);
+      }
+    }
+  }
+
+  // ─── Update ──────────────────────────────────────────────────
+  @override
+  void update(double dt) {
+    super.update(dt);
+    updateCamera();
+
+    _collisionTimer += dt;
+    if (_collisionTimer >= _collisionInterval) {
+      _collisionTimer = 0;
+      checkCollisions();
+      checkWallCollision();
+    }
+
+    _lbUpdateTimer += dt;
+    if (_lbUpdateTimer >= _lbUpdateInterval) {
+      _lbUpdateTimer = 0;
+      rebuildLeaderboard();
+    }
+
+    _processRespawnQueue(dt);
+    attractFoodToPlayer(dt: dt);
+  }
+
+  // ─── Render ──────────────────────────────────────────────────
+  @override
+  void render(Canvas canvas) {
+    renderWorld(canvas);
+    super.render(canvas);
+    renderHud(canvas);
+  }
+
+  // ─── Drag ────────────────────────────────────────────────────
+  @override
+  bool onDragStart(DragStartEvent event) {
+    if (player.isAlive) player.onDragStart(event);
+    return true;
+  }
+
+  @override
+  bool onDragUpdate(DragUpdateEvent event) {
+    if (player.isAlive) player.onDragUpdate(event);
+    return true;
+  }
+
+  @override
+  bool onDragEnd(DragEndEvent event) {
+    if (player.isAlive) player.onDragEnd(event);
+    return true;
+  }
+
+  @override
+  bool onDragCancel(DragCancelEvent event) {
+    super.onDragCancel(event);
+    if (player.isAlive) player.onDragCancel(event);
+    return true;
+  }
+}
