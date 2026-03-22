@@ -1,8 +1,10 @@
 // lib/game/engine_render.dart
+import 'dart:math';
 import 'dart:ui';
-import 'package:flame/components.dart';
-import '../utils/constants.dart';
 import 'snake_engine.dart';
+import '../components/food.dart' show FoodType;
+import '../utils/constants.dart';
+import 'package:flame/components.dart';
 
 extension EngineRender on SnakeEngine {
   void renderWorld(Canvas canvas) {
@@ -19,8 +21,73 @@ extension EngineRender on SnakeEngine {
   }
 
   // ─── Fundo simples ────────────────────────────────────────────
+  // Cache das letras por célula do grid (gerado uma vez)
+  static final Map<int, String> _grassLetters = {};
+  static final List<String> _alphabet = ['J','S','K','B','H','I','G'];
+  static final Random _grassRng = Random(42); // seed fixo = sempre igual
+
   void renderGrassTiles(Canvas canvas) {
     canvas.drawRect(Rect.fromLTWH(0, 0, size.x, size.y), grassLightPaint);
+    _renderGrassLetters(canvas);
+  }
+
+  void _renderGrassLetters(Canvas canvas) {
+    const double spacing = kGridSpacing; // usa o mesmo espaçamento do grid
+    final double camX = cameraOffset.x;
+    final double camY = cameraOffset.y;
+    final double sw = size.x;
+    final double sh = size.y;
+
+    // Célula inicial visível
+    final int startCellX = (camX / spacing).floor() - 1;
+    final int startCellY = (camY / spacing).floor() - 1;
+    final int endCellX   = ((camX + sw) / spacing).ceil() + 1;
+    final int endCellY   = ((camY + sh) / spacing).ceil() + 1;
+
+    for (int cx = startCellX; cx <= endCellX; cx++) {
+      for (int cy = startCellY; cy <= endCellY; cy++) {
+        // Chave única para cada célula do mundo
+        final int key = cx * 100003 + cy;
+        if (!_grassLetters.containsKey(key)) {
+          // Apenas 25% das células têm letra (espaçadas)
+          if (_grassRng.nextDouble() < 0.25) {
+            _grassLetters[key] =
+                _alphabet[_grassRng.nextInt(_alphabet.length)];
+          } else {
+            _grassLetters[key] = ''; // célula vazia
+          }
+        }
+        final String letter = _grassLetters[key]!;
+        if (letter.isEmpty) continue;
+
+        // Posição na tela
+        final double sx = cx * spacing - camX + spacing * 0.5;
+        final double sy = cy * spacing - camY + spacing * 0.5;
+
+        // Culling
+        if (sx < -spacing || sx > sw + spacing ||
+            sy < -spacing || sy > sh + spacing) continue;
+
+        // Desenha a letra com ParagraphBuilder (dart:ui nativo)
+        final pb = ParagraphBuilder(ParagraphStyle(
+          fontSize: 48,
+          fontWeight: FontWeight.w700,
+        ))
+          ..pushStyle(TextStyle(
+            color: const Color(0x26FFFFFF), // levemente visível
+            fontSize: 48,
+          ))
+          ..addText(letter);
+
+        final para = pb.build()
+          ..layout(const ParagraphConstraints(width: 20));
+
+        canvas.drawParagraph(
+          para,
+          Offset(sx - para.maxIntrinsicWidth / 2, sy - para.height / 2),
+        );
+      }
+    }
   }
 
   void renderGrassBlades(Canvas canvas) {
@@ -31,10 +98,12 @@ extension EngineRender on SnakeEngine {
   void renderGrid(Canvas canvas) {
     final double startX = -(cameraOffset.x % kGridSpacing);
     final double startY = -(cameraOffset.y % kGridSpacing);
-    for (double x = startX; x <= size.x; x += kGridSpacing)
+    for (double x = startX; x <= size.x; x += kGridSpacing) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.y), gridPaint);
-    for (double y = startY; y <= size.y; y += kGridSpacing)
+    }
+    for (double y = startY; y <= size.y; y += kGridSpacing) {
       canvas.drawLine(Offset(0, y), Offset(size.x, y), gridPaint);
+    }
   }
 
   // ─── Comida — render direto, sem loop de componentes ─────────
@@ -133,7 +202,12 @@ extension EngineRender on SnakeEngine {
 
     for (final food in foods) {
       final Vector2 p = toMm(food.position);
-      canvas.drawCircle(Offset(p.x, p.y), 1.0, minimapFood);
+      if (food.type == FoodType.star) {
+        canvas.drawCircle(Offset(p.x, p.y), 2.5,
+            Paint()..color = const Color(0xFFFFD700));
+      } else {
+        canvas.drawCircle(Offset(p.x, p.y), 1.0, minimapFood);
+      }
     }
     for (final bot in bots) {
       if (!bot.isAlive || bot.segments.isEmpty) continue;

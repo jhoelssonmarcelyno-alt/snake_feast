@@ -86,7 +86,7 @@ class _ReviveOverlayState extends State<ReviveOverlay>
           decorationThickness: 0,
         ),
         child: Container(
-          color: Colors.black.withOpacity(0.78),
+          color: Colors.black.withValues(alpha: 0.78),
           child: Center(
             child: FadeTransition(
               opacity: _fade,
@@ -100,11 +100,11 @@ class _ReviveOverlayState extends State<ReviveOverlay>
                     borderRadius: BorderRadius.circular(24),
                     color: const Color(0xFF0D1B2A),
                     border: Border.all(
-                        color: const Color(0xFF2ECC71).withOpacity(0.4),
+                        color: const Color(0xFF2ECC71).withValues(alpha: 0.4),
                         width: 1.5),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF2ECC71).withOpacity(0.15),
+                        color: const Color(0xFF2ECC71).withValues(alpha: 0.15),
                         blurRadius: 30,
                         spreadRadius: 4,
                       ),
@@ -122,10 +122,10 @@ class _ReviveOverlayState extends State<ReviveOverlay>
                             height: 64,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: const Color(0xFF2ECC71).withOpacity(0.12),
+                              color: const Color(0xFF2ECC71).withValues(alpha: 0.12),
                               border: Border.all(
                                   color: const Color(0xFF2ECC71)
-                                      .withOpacity(0.5)),
+                                      .withValues(alpha: 0.5)),
                             ),
                           ),
                           const Icon(Icons.favorite_rounded,
@@ -148,7 +148,7 @@ class _ReviveOverlayState extends State<ReviveOverlay>
                       Text(
                         'Reviver custa 10 moedas',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                           fontSize: 12,
                           decoration: TextDecoration.none,
                         ),
@@ -157,7 +157,7 @@ class _ReviveOverlayState extends State<ReviveOverlay>
                       Text(
                         'Tentativas restantes: ${3 - revivesLeft}',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.35),
+                          color: Colors.white.withValues(alpha: 0.35),
                           fontSize: 11,
                           decoration: TextDecoration.none,
                         ),
@@ -181,7 +181,7 @@ class _ReviveOverlayState extends State<ReviveOverlay>
                                   strokeWidth: 3,
                                   color: const Color(0xFF2ECC71),
                                   backgroundColor:
-                                      Colors.white.withOpacity(0.1),
+                                      Colors.white.withValues(alpha: 0.1),
                                 ),
                                 Text(
                                   '$_seconds',
@@ -202,10 +202,10 @@ class _ReviveOverlayState extends State<ReviveOverlay>
                                 horizontal: 14, vertical: 8),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(12),
-                              color: const Color(0xFFFFD600).withOpacity(0.1),
+                              color: const Color(0xFFFFD600).withValues(alpha: 0.1),
                               border: Border.all(
                                   color:
-                                      const Color(0xFFFFD600).withOpacity(0.3)),
+                                      const Color(0xFFFFD600).withValues(alpha: 0.3)),
                             ),
                             child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -249,12 +249,12 @@ class _ReviveOverlayState extends State<ReviveOverlay>
                                 : null,
                             color: canAfford
                                 ? null
-                                : Colors.white.withOpacity(0.06),
+                                : Colors.white.withValues(alpha: 0.06),
                             boxShadow: canAfford
                                 ? [
                                     BoxShadow(
                                       color: const Color(0xFF2ECC71)
-                                          .withOpacity(0.4),
+                                          .withValues(alpha: 0.4),
                                       blurRadius: 16,
                                     )
                                   ]
@@ -300,13 +300,13 @@ class _ReviveOverlayState extends State<ReviveOverlay>
                             borderRadius: BorderRadius.circular(14),
                             color: Colors.transparent,
                             border: Border.all(
-                                color: Colors.white.withOpacity(0.15)),
+                                color: Colors.white.withValues(alpha: 0.15)),
                           ),
                           child: Center(
                             child: Text(
                               'DESISTIR',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.4),
+                                color: Colors.white.withValues(alpha: 0.4),
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 2,

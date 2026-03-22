@@ -38,6 +38,9 @@ class ScoreService {
 
   SnakeSkin get selectedSkin => kPlayerSkins[selectedSkinIndex];
 
+  /// ID da skin selecionada — usado pelo modo online.
+  String get selectedSkinId => selectedSkin.id;
+
   // ─── Nome do player ───────────────────────────────────────────
   String get playerName {
     final n = _prefs.getString('player_name') ?? 'Você';
@@ -120,7 +123,9 @@ class ScoreService {
   }
 
   bool isSkinUnlocked(String id) {
-    if (id == 'classic') return true; // grátis
+    // Skins comuns sempre desbloqueadas
+    const free = ['classic','verde','roxo','laranja','rosa','azul'];
+    if (free.contains(id)) return true;
     return unlockedSkins.contains(id);
   }
 
@@ -144,6 +149,78 @@ class ScoreService {
 
   Future<void> setRevives(int v) async {
     await _prefs.setInt('revives', v);
+  }
+
+
+  // ─── Pílula de reviver com preço crescente (+2 por compra) ──
+  int get revivesBought => _prefs.getInt('revives_bought') ?? 0;
+
+  /// Preço atual da pílula = 10 + (revivesBought * 2)
+  int get revivePrice => 10 + revivesBought * 2;
+
+  Future<bool> buyRevive() async {
+    final price = revivePrice;
+    final ok = await spendCoins(price);
+    if (ok) {
+      await _prefs.setInt('revives_bought', revivesBought + 1);
+      await setRevives(revives + 1);
+    }
+    return ok;
+  }
+
+
+  // ─── Cosméticos visuais ───────────────────────────────────────
+  List<String> get unlockedCosmetics =>
+      _prefs.getStringList('unlocked_cosmetics') ?? [];
+
+  Future<void> unlockCosmetic(String id) async {
+    final list = unlockedCosmetics;
+    if (!list.contains(id)) {
+      list.add(id);
+      await _prefs.setStringList('unlocked_cosmetics', list);
+    }
+  }
+
+  bool isCosmeticUnlocked(String id) =>
+      unlockedCosmetics.contains(id);
+
+
+  // ─── Ranking local (top 10 recordes por nome) ────────────────
+  static const String _kRankingKey = 'local_ranking';
+
+  List<Map<String, dynamic>> getLocalRanking() {
+    final raw = _prefs.getString(_kRankingKey);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final List<Map<String, dynamic>> list = [];
+      for (final e in raw.split('||')) {
+        final parts = e.split('::');
+        if (parts.length >= 2) {
+          list.add({
+            'name': parts[0],
+            'score': int.tryParse(parts[1]) ?? 0,
+          });
+        }
+      }
+      list.sort((a, b) =>
+          (b['score'] as int).compareTo(a['score'] as int));
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> submitToLocalRanking(String name, int score) async {
+    if (score <= 0) return;
+    final list = getLocalRanking();
+    list.removeWhere((e) =>
+        (e['name'] as String).toLowerCase() == name.toLowerCase());
+    list.add({'name': name, 'score': score});
+    list.sort((a, b) =>
+        (b['score'] as int).compareTo(a['score'] as int));
+    final top = list.take(10).toList();
+    final raw = top.map((e) => '${e["name"]}::${e["score"]}').join('||');
+    await _prefs.setString(_kRankingKey, raw);
   }
 
 }

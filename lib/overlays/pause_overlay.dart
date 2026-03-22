@@ -1,6 +1,7 @@
 // lib/overlays/pause_overlay.dart
 import 'package:flutter/material.dart';
 import '../game/snake_engine.dart';
+import '../services/audio_service.dart';
 import '../utils/constants.dart';
 
 class PauseOverlay extends StatefulWidget {
@@ -26,6 +27,7 @@ class _PauseOverlayState extends State<PauseOverlay>
     _scale = Tween<double>(begin: 0.88, end: 1.0)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
     _ctrl.forward();
+    AudioService.instance.pause();
   }
 
   @override
@@ -38,11 +40,17 @@ class _PauseOverlayState extends State<PauseOverlay>
     widget.engine.overlays.remove(kOverlayPause);
     widget.engine.overlays.add(kOverlayHud);
     widget.engine.resumeEngine();
+    // ✅ resume() em vez de playGameMusic() — retoma de onde parou
+    AudioService.instance.resume();
   }
 
   void _goMenu() {
     widget.engine.overlays.remove(kOverlayPause);
     widget.engine.overlays.add(kOverlayMainMenu);
+    widget.engine.pauseEngine();
+    // ✅ stop() antes de playMenuMusic() — limpa _currentTrack
+    AudioService.instance.stop();
+    AudioService.instance.playMenuMusic();
   }
 
   @override
@@ -56,7 +64,7 @@ class _PauseOverlayState extends State<PauseOverlay>
           decorationThickness: 0,
         ),
         child: Container(
-          color: Colors.black.withOpacity(0.65),
+          color: Colors.black.withValues(alpha: 0.65),
           child: Center(
             child: FadeTransition(
               opacity: _fade,
@@ -64,16 +72,16 @@ class _PauseOverlayState extends State<PauseOverlay>
                 scale: _scale,
                 child: Container(
                   width: 280,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 28, vertical: 32),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
                     color: const Color(0xFF0D1B2A),
-                    border: Border.all(
-                        color: const Color(0xFF1E3A5F), width: 1),
+                    border:
+                        Border.all(color: const Color(0xFF1E3A5F), width: 1),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.5),
+                        color: Colors.black.withValues(alpha: 0.5),
                         blurRadius: 30,
                         spreadRadius: 4,
                       ),
@@ -82,15 +90,16 @@ class _PauseOverlayState extends State<PauseOverlay>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Ícone
                       Container(
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(0xFF29CFFF).withOpacity(0.12),
+                          color:
+                              const Color(0xFF29CFFF).withValues(alpha: 0.12),
                           border: Border.all(
-                              color: const Color(0xFF29CFFF).withOpacity(0.4)),
+                              color: const Color(0xFF29CFFF)
+                                  .withValues(alpha: 0.4)),
                         ),
                         child: const Icon(Icons.pause_rounded,
                             color: Color(0xFF29CFFF), size: 28),
@@ -107,8 +116,6 @@ class _PauseOverlayState extends State<PauseOverlay>
                         ),
                       ),
                       const SizedBox(height: 28),
-
-                      // Continuar
                       _PauseButton(
                         label: 'CONTINUAR',
                         icon: Icons.play_arrow_rounded,
@@ -117,8 +124,6 @@ class _PauseOverlayState extends State<PauseOverlay>
                         onTap: _resume,
                       ),
                       const SizedBox(height: 10),
-
-                      // Menu principal
                       _PauseButton(
                         label: 'MENU PRINCIPAL',
                         icon: Icons.home_rounded,
@@ -176,18 +181,18 @@ class _PauseButtonState extends State<_PauseButton> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             color: widget.filled
-                ? widget.color.withOpacity(_pressed ? 0.85 : 1.0)
-                : widget.color.withOpacity(0.1),
+                ? widget.color.withValues(alpha: _pressed ? 0.85 : 1.0)
+                : widget.color.withValues(alpha: 0.1),
             border: widget.filled
                 ? null
-                : Border.all(color: widget.color.withOpacity(0.4), width: 1),
+                : Border.all(
+                    color: widget.color.withValues(alpha: 0.4), width: 1),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(widget.icon,
-                  color: widget.filled ? Colors.white : widget.color,
-                  size: 18),
+                  color: widget.filled ? Colors.white : widget.color, size: 18),
               const SizedBox(width: 8),
               Text(
                 widget.label,

@@ -11,6 +11,8 @@ import 'overlays/settings_overlay.dart';
 import 'overlays/pause_overlay.dart';
 import 'overlays/revive_overlay.dart';
 import 'overlays/shop_overlay.dart';
+import 'overlays/lobby_overlay.dart';
+import 'overlays/ranking_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,6 +66,8 @@ class _GameScreenState extends State<GameScreen> {
         kOverlayPause: (context, game) => PauseOverlay(engine: game),
         kOverlayShop: (context, game) => ShopOverlay(engine: game),
         kOverlayRevive: (context, game) => ReviveOverlay(engine: game),
+        kOverlayLobby: (context, game) => LobbyOverlay(engine: game),
+        kOverlayRanking: (context, game) => RankingOverlay(engine: game), // ← novo
       },
       initialActiveOverlays: const [kOverlayMainMenu],
     );

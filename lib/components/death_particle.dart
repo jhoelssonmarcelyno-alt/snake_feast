@@ -1,8 +1,8 @@
 // lib/components/death_particle.dart
 import 'dart:math';
 import 'dart:ui';
-import 'package:flame/components.dart';
 import '../game/snake_engine.dart';
+import 'package:flame/components.dart';
 import '../utils/constants.dart';
 
 enum _Shape { circle, square, triangle, ring, star }
@@ -368,7 +368,10 @@ class DeathParticle extends Component {
         sy > engine.size.y + 20) return;
 
     _paint.color = Color.fromARGB(
-        (alpha * 255).round(), _color.red, _color.green, _color.blue);
+        (alpha * 255).round(),
+        (_color.r * 255).round().clamp(0, 255),
+        (_color.g * 255).round().clamp(0, 255),
+        (_color.b * 255).round().clamp(0, 255));
 
     switch (_shape) {
       case _Shape.circle:

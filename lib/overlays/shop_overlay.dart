@@ -7,63 +7,106 @@ import '../utils/constants.dart';
 class ShopOverlay extends StatefulWidget {
   final SnakeEngine engine;
   const ShopOverlay({super.key, required this.engine});
-
   @override
   State<ShopOverlay> createState() => _ShopOverlayState();
 }
 
 class _ShopOverlayState extends State<ShopOverlay>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _fade;
-  late final Animation<Offset> _slide;
-
+  late final TabController _tab;
   String? _feedback;
+  bool _feedbackOk = true;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 350));
-    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    _slide = Tween<Offset>(
-            begin: const Offset(0, 0.08), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-    _ctrl.forward();
+    _tab = TabController(length: 3, vsync: this);
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _tab.dispose();
     super.dispose();
   }
 
-  void _close() {
-    widget.engine.overlays.remove(kOverlayShop);
-  }
+  void _close() => widget.engine.overlays.remove(kOverlayShop);
 
-  void _showFeedback(String msg) {
-    setState(() => _feedback = msg);
+  void _showFeedback(String msg, bool ok) {
+    setState(() {
+      _feedback = msg;
+      _feedbackOk = ok;
+    });
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _feedback = null);
     });
   }
 
-  Future<void> _buy({
-    required String label,
-    required int coinCost,
-    required int diamondCost,
-    required Future<bool> Function() action,
-  }) async {
-    final ok = await action();
+  Future<void> _buySkin(SnakeSkin skin) async {
+    if (ScoreService.instance.isSkinUnlocked(skin.id)) {
+      _equipSkin(skin);
+      return;
+    }
+    final price = _skinPrice(skin);
+    final isDiamond = skin.rarity == 'lendaria' || skin.rarity == 'rara';
+    final ok = isDiamond
+        ? await ScoreService.instance.spendDiamonds(price)
+        : await ScoreService.instance.spendCoins(price);
     if (ok) {
-      _showFeedback('✔ $label comprado!');
-      setState(() {});
+      await ScoreService.instance.unlockSkin(skin.id);
+      _equipSkin(skin);
+      _showFeedback('✔ ${skin.name} desbloqueada!', true);
     } else {
-      final need = coinCost > 0
-          ? 'Precisa de $coinCost moedas'
-          : 'Precisa de $diamondCost diamantes';
-      _showFeedback('✘ $need');
+      _showFeedback(
+          '✘ Precisa de $price ${isDiamond ? 'diamantes' : 'moedas'}', false);
+    }
+    setState(() {});
+  }
+
+  void _equipSkin(SnakeSkin skin) {
+    final idx = kPlayerSkins.indexWhere((s) => s.id == skin.id);
+    if (idx < 0) return;
+    ScoreService.instance.saveSkinIndex(idx);
+    widget.engine.setSkin(idx);
+    _showFeedback('✔ ${skin.name} equipada!', true);
+    setState(() {});
+  }
+
+  int _skinPrice(SnakeSkin skin) {
+    switch (skin.rarity) {
+      case 'incomum':
+        return 30;
+      case 'rara':
+        return 1;
+      case 'lendaria':
+        return 3;
+      default:
+        return 0;
+    }
+  }
+
+  Color _rarityColor(String rarity) {
+    switch (rarity) {
+      case 'incomum':
+        return const Color(0xFF69F0AE);
+      case 'rara':
+        return const Color(0xFF29CFFF);
+      case 'lendaria':
+        return const Color(0xFFFFD700);
+      default:
+        return Colors.white54;
+    }
+  }
+
+  String _rarityLabel(String rarity) {
+    switch (rarity) {
+      case 'incomum':
+        return 'INCOMUM';
+      case 'rara':
+        return 'RARA';
+      case 'lendaria':
+        return '★ LENDÁRIA';
+      default:
+        return 'COMUM';
     }
   }
 
@@ -71,361 +114,534 @@ class _ShopOverlayState extends State<ShopOverlay>
   Widget build(BuildContext context) {
     final coins = ScoreService.instance.coins;
     final diamonds = ScoreService.instance.diamonds;
-    final boosts = ScoreService.instance.extraBoosts;
+    final revives = ScoreService.instance.revives;
+    final revivePrice = ScoreService.instance.revivePrice;
     final mq = MediaQuery.of(context);
+    final equipped = ScoreService.instance.selectedSkin.id;
 
     return Material(
       color: Colors.transparent,
       child: DefaultTextStyle(
         style: const TextStyle(
-          decoration: TextDecoration.none,
-          decorationColor: Colors.transparent,
-          decorationThickness: 0,
-        ),
+            decoration: TextDecoration.none,
+            decorationColor: Colors.transparent,
+            decorationThickness: 0),
         child: Container(
-          color: Colors.black.withOpacity(0.82),
+          color: Colors.black.withValues(alpha: 0.85),
           child: SafeArea(
             child: Center(
-              child: FadeTransition(
-                opacity: _fade,
-                child: SlideTransition(
-                  position: _slide,
-                  child: Container(
-                    width: mq.size.width * 0.88,
-                    constraints: BoxConstraints(
-                      maxWidth: 440,
-                      maxHeight: mq.size.height * 0.88,
+              child: Container(
+                width: mq.size.width * 0.92,
+                height: mq.size.height * 0.88,
+                constraints: const BoxConstraints(maxWidth: 480),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  color: const Color(0xFF0D1B2A),
+                  border: Border.all(color: const Color(0xFF1E3A5F)),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 30)
+                  ],
+                ),
+                child: Column(children: [
+                  // ── Cabeçalho ─────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                    decoration: const BoxDecoration(
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(24)),
+                      color: Color(0xFF0A1420),
                     ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24),
-                      color: const Color(0xFF0D1B2A),
-                      border: Border.all(
-                          color: const Color(0xFF1E3A5F), width: 1),
-                      boxShadow: [
-                        BoxShadow(
-                            color: Colors.black.withOpacity(0.5),
-                            blurRadius: 30)
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // ── Cabeçalho ─────────────────────────
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 16, horizontal: 20),
-                          decoration: BoxDecoration(
-                            borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(24)),
-                            gradient: LinearGradient(
-                              colors: [
-                                const Color(0xFF1A3A5C),
-                                const Color(0xFF0D1B2A),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.store_rounded,
-                                  color: Color(0xFFFFD600), size: 22),
-                              const SizedBox(width: 10),
-                              const Text(
-                                'LOJA',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  letterSpacing: 4,
-                                  decoration: TextDecoration.none,
-                                ),
-                              ),
-                              const Spacer(),
-                              // Saldo
-                              _BalancePill(
-                                  icon: Icons.monetization_on_rounded,
-                                  color: const Color(0xFFFFD600),
-                                  value: '$coins'),
-                              const SizedBox(width: 8),
-                              _BalancePill(
-                                  icon: Icons.diamond_rounded,
-                                  color: const Color(0xFF00E5FF),
-                                  value: '$diamonds'),
-                              const SizedBox(width: 12),
-                              GestureDetector(
-                                onTap: _close,
-                                child: Container(
-                                  width: 30,
-                                  height: 30,
-                                  decoration: BoxDecoration(
+                    child: Column(children: [
+                      Row(children: [
+                        const Icon(Icons.store_rounded,
+                            color: Color(0xFFFFD600), size: 20),
+                        const SizedBox(width: 8),
+                        const Text('LOJA',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 4,
+                                decoration: TextDecoration.none)),
+                        const Spacer(),
+                        _Pill(
+                            icon: Icons.monetization_on_rounded,
+                            color: const Color(0xFFFFD600),
+                            value: '$coins'),
+                        const SizedBox(width: 6),
+                        _Pill(
+                            icon: Icons.diamond_rounded,
+                            color: const Color(0xFF00E5FF),
+                            value: '$diamonds'),
+                        const SizedBox(width: 6),
+                        _Pill(
+                            icon: Icons.favorite_rounded,
+                            color: const Color(0xFF2ECC71),
+                            value: '$revives'),
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                            onTap: _close,
+                            child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: Colors.white.withOpacity(0.08),
+                                    color:
+                                        Colors.white.withValues(alpha: 0.08)),
+                                child: const Icon(Icons.close_rounded,
+                                    color: Colors.white54, size: 16))),
+                      ]),
+                      const SizedBox(height: 10),
+                      TabBar(
+                        controller: _tab,
+                        indicatorColor: const Color(0xFFFFD600),
+                        labelColor: const Color(0xFFFFD600),
+                        unselectedLabelColor: Colors.white38,
+                        indicatorSize: TabBarIndicatorSize.label,
+                        labelStyle: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                            decoration: TextDecoration.none),
+                        tabs: const [
+                          Tab(text: 'SKINS'),
+                          Tab(text: 'ITENS'),
+                          Tab(text: 'VISUAL'),
+                        ],
+                      ),
+                    ]),
+                  ),
+
+                  // ── Feedback ──────────────────────────────
+                  if (_feedback != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 7, horizontal: 16),
+                      color: _feedbackOk
+                          ? const Color(0xFF1B5E20)
+                          : const Color(0xFF7F0000),
+                      child: Text(_feedback!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              decoration: TextDecoration.none)),
+                    ),
+
+                  // ── Conteúdo ──────────────────────────────
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tab,
+                      children: [
+                        // ── ABA SKINS ─────────────────────────
+                        GridView.builder(
+                          padding: const EdgeInsets.all(12),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                            childAspectRatio: 1.55,
+                          ),
+                          itemCount: kPlayerSkins.length,
+                          itemBuilder: (_, i) {
+                            final skin = kPlayerSkins[i];
+                            final unlocked =
+                                ScoreService.instance.isSkinUnlocked(skin.id) ||
+                                    skin.rarity == 'comum';
+                            final isEquipped = equipped == skin.id;
+                            final price = _skinPrice(skin);
+                            final rColor = _rarityColor(skin.rarity);
+                            final isDiamond = skin.rarity == 'lendaria' ||
+                                skin.rarity == 'rara';
+
+                            return GestureDetector(
+                              onTap: () => _buySkin(skin),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(14),
+                                  color: isEquipped
+                                      ? skin.bodyColor.withValues(alpha: 0.18)
+                                      : Colors.white.withValues(alpha: 0.04),
+                                  border: Border.all(
+                                    color: isEquipped
+                                        ? skin.accentColor
+                                        : rColor.withValues(alpha: 0.3),
+                                    width: isEquipped ? 2 : 1,
                                   ),
-                                  child: const Icon(Icons.close_rounded,
-                                      color: Colors.white54, size: 18),
+                                ),
+                                padding: const EdgeInsets.all(10),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(children: [
+                                      Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          gradient: RadialGradient(colors: [
+                                            skin.bodyColor,
+                                            skin.bodyColorDark,
+                                          ]),
+                                          boxShadow: [
+                                            BoxShadow(
+                                                color: skin.accentColor
+                                                    .withValues(alpha: 0.5),
+                                                blurRadius: 6)
+                                          ],
+                                        ),
+                                        child: unlocked
+                                            ? null
+                                            : const Icon(Icons.lock_rounded,
+                                                color: Colors.white54,
+                                                size: 14),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                          child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(skin.name,
+                                              style: TextStyle(
+                                                  color: unlocked
+                                                      ? Colors.white
+                                                      : Colors.white54,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  decoration:
+                                                      TextDecoration.none)),
+                                          Text(_rarityLabel(skin.rarity),
+                                              style: TextStyle(
+                                                  color: rColor,
+                                                  fontSize: 8,
+                                                  letterSpacing: 1.5,
+                                                  decoration:
+                                                      TextDecoration.none)),
+                                        ],
+                                      )),
+                                    ]),
+                                    const Spacer(),
+                                    Container(
+                                      width: double.infinity,
+                                      height: 26,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        color: isEquipped
+                                            ? skin.accentColor
+                                                .withValues(alpha: 0.25)
+                                            : unlocked
+                                                ? const Color(0xFF1E3A5F)
+                                                : (isDiamond
+                                                        ? const Color(
+                                                            0xFF00B4D8)
+                                                        : const Color(
+                                                            0xFFFF9500))
+                                                    .withValues(alpha: 0.9),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: isEquipped
+                                            ? [
+                                                const Icon(Icons.check_rounded,
+                                                    color: Colors.white,
+                                                    size: 13),
+                                                const SizedBox(width: 4),
+                                                const Text('EQUIPADA',
+                                                    style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 9,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        decoration:
+                                                            TextDecoration
+                                                                .none))
+                                              ]
+                                            : unlocked
+                                                ? [
+                                                    const Text('EQUIPAR',
+                                                        style: TextStyle(
+                                                            color:
+                                                                Colors.white70,
+                                                            fontSize: 9,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            decoration:
+                                                                TextDecoration
+                                                                    .none))
+                                                  ]
+                                                : [
+                                                    Icon(
+                                                        isDiamond
+                                                            ? Icons
+                                                                .diamond_rounded
+                                                            : Icons
+                                                                .monetization_on_rounded,
+                                                        color: Colors.white,
+                                                        size: 12),
+                                                    const SizedBox(width: 3),
+                                                    Text('$price',
+                                                        style: const TextStyle(
+                                                            color: Colors.white,
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            decoration:
+                                                                TextDecoration
+                                                                    .none))
+                                                  ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
 
-                        // ── Feedback ──────────────────────────
-                        if (_feedback != null)
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 8, horizontal: 20),
-                            color: _feedback!.startsWith('✔')
-                                ? const Color(0xFF1B5E20)
-                                : const Color(0xFF7F0000),
-                            child: Text(
-                              _feedback!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.none,
+                        // ── ABA ITENS ─────────────────────────
+                        SingleChildScrollView(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(children: [
+                            _ItemTile(
+                              icon: '💊',
+                              bg: const Color(0xFF1A2A1A),
+                              title: 'Pílula de Reviver',
+                              subtitle:
+                                  'Você tem $revives  •  Próxima: $revivePrice 🪙',
+                              coinCost: revivePrice,
+                              onBuy: () async {
+                                final ok =
+                                    await ScoreService.instance.buyRevive();
+                                _showFeedback(
+                                    ok
+                                        ? '✔ Pílula comprada! Próxima custará ${ScoreService.instance.revivePrice} moedas'
+                                        : '✘ Precisa de $revivePrice moedas',
+                                    ok);
+                                setState(() {});
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            _ItemTile(
+                              icon: '⚡',
+                              bg: const Color(0xFF1A3A1A),
+                              title: 'Boost Extra',
+                              subtitle:
+                                  'Você tem ${ScoreService.instance.extraBoosts}',
+                              coinCost: 5,
+                              onBuy: () async {
+                                final ok =
+                                    await ScoreService.instance.spendCoins(5);
+                                if (ok) {
+                                  await ScoreService.instance.addExtraBoosts(1);
+                                }
+                                _showFeedback(
+                                    ok
+                                        ? '✔ Boost comprado!'
+                                        : '✘ Moedas insuficientes',
+                                    ok);
+                                setState(() {});
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            _ItemTile(
+                              icon: '💎',
+                              bg: const Color(0xFF001A2A),
+                              title: '100 Moedas',
+                              subtitle: 'Troca 1 diamante por moedas',
+                              diamondCost: 1,
+                              onBuy: () async {
+                                final ok = await ScoreService.instance
+                                    .spendDiamonds(1);
+                                if (ok) {
+                                  await ScoreService.instance.addCoins(100);
+                                }
+                                _showFeedback(
+                                    ok
+                                        ? '✔ +100 moedas!'
+                                        : '✘ Diamantes insuficientes',
+                                    ok);
+                                setState(() {});
+                              },
+                            ),
+                          ]),
+                        ),
+
+                        // ── ABA VISUAL ────────────────────────
+                        SingleChildScrollView(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _SectionLabel(
+                                label: 'TRILHA DE BOOST',
+                                icon: Icons.auto_awesome_rounded,
+                                color: const Color(0xFFFF9500),
                               ),
-                            ),
-                          ),
-
-                        // ── Itens ─────────────────────────────
-                        Flexible(
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Seção moedas
-                                _SectionLabel(
-                                    label: 'COM MOEDAS',
-                                    icon: Icons.monetization_on_rounded,
-                                    color: const Color(0xFFFFD600)),
-                                const SizedBox(height: 10),
-
-                                _ShopItem(
-                                  icon: '⚡',
-                                  iconBg: const Color(0xFF1A3A1A),
-                                  title: 'Boost Extra',
-                                  subtitle: 'Você tem $boosts boost(s)',
-                                  coinCost: 5,
-                                  onBuy: () => _buy(
-                                    label: 'Boost Extra',
-                                    coinCost: 5,
-                                    diamondCost: 0,
-                                    action: () async {
-                                      final ok = await ScoreService
-                                          .instance
-                                          .spendCoins(5);
-                                      if (ok) {
-                                        await ScoreService.instance
-                                            .addExtraBoosts(1);
-                                      }
-                                      return ok;
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-
-                                _ShopItem(
-                                  icon: '💊',
-                                  iconBg: const Color(0xFF1A1A3A),
-                                  title: 'Reviver x1',
-                                  subtitle: 'Revive ao morrer (1 uso)',
-                                  coinCost: 10,
-                                  onBuy: () => _buy(
-                                    label: 'Reviver',
-                                    coinCost: 10,
-                                    diamondCost: 0,
-                                    action: () async {
-                                      final ok = await ScoreService
-                                          .instance
-                                          .spendCoins(10);
-                                      if (ok) {
-                                        final cur = ScoreService
-                                            .instance.revives;
-                                        await ScoreService.instance
-                                            .setRevives(cur + 1);
-                                      }
-                                      return ok;
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-
-                                _ShopItem(
-                                  icon: '🎨',
-                                  iconBg: const Color(0xFF3A1A1A),
-                                  title: 'Skin HOT',
-                                  subtitle: ScoreService.instance
-                                          .isSkinUnlocked('hot')
-                                      ? '✔ Desbloqueada'
-                                      : 'Cobra de fogo',
-                                  coinCost: 30,
-                                  locked: ScoreService.instance
-                                      .isSkinUnlocked('hot'),
-                                  onBuy: () => _buy(
-                                    label: 'Skin HOT',
-                                    coinCost: 30,
-                                    diamondCost: 0,
-                                    action: () async {
-                                      if (ScoreService.instance
-                                          .isSkinUnlocked('hot')) {
-                                        return false;
-                                      }
-                                      final ok = await ScoreService
-                                          .instance
-                                          .spendCoins(30);
-                                      if (ok) {
-                                        await ScoreService.instance
-                                            .unlockSkin('hot');
-                                      }
-                                      return ok;
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-
-                                _ShopItem(
-                                  icon: '👾',
-                                  iconBg: const Color(0xFF1A3A2A),
-                                  title: 'Skin ALIEN',
-                                  subtitle: ScoreService.instance
-                                          .isSkinUnlocked('alien')
-                                      ? '✔ Desbloqueada'
-                                      : 'Extraterrestre',
-                                  coinCost: 30,
-                                  locked: ScoreService.instance
-                                      .isSkinUnlocked('alien'),
-                                  onBuy: () => _buy(
-                                    label: 'Skin ALIEN',
-                                    coinCost: 30,
-                                    diamondCost: 0,
-                                    action: () async {
-                                      if (ScoreService.instance
-                                          .isSkinUnlocked('alien')) {
-                                        return false;
-                                      }
-                                      final ok = await ScoreService
-                                          .instance
-                                          .spendCoins(30);
-                                      if (ok) {
-                                        await ScoreService.instance
-                                            .unlockSkin('alien');
-                                      }
-                                      return ok;
-                                    },
-                                  ),
-                                ),
-
-                                const SizedBox(height: 18),
-
-                                // Seção diamantes
-                                _SectionLabel(
-                                    label: 'COM DIAMANTES',
-                                    icon: Icons.diamond_rounded,
-                                    color: const Color(0xFF00E5FF)),
-                                const SizedBox(height: 10),
-
-                                _ShopItem(
-                                  icon: '👑',
-                                  iconBg: const Color(0xFF2A1A00),
-                                  title: 'Skin PIRANHA',
-                                  subtitle: ScoreService.instance
-                                          .isSkinUnlocked('piranha')
-                                      ? '✔ Desbloqueada'
-                                      : 'Rara exclusiva',
-                                  diamondCost: 1,
-                                  locked: ScoreService.instance
-                                      .isSkinUnlocked('piranha'),
-                                  onBuy: () => _buy(
-                                    label: 'Skin PIRANHA',
-                                    coinCost: 0,
-                                    diamondCost: 1,
-                                    action: () async {
-                                      if (ScoreService.instance
-                                          .isSkinUnlocked('piranha')) {
-                                        return false;
-                                      }
-                                      final ok = await ScoreService
-                                          .instance
-                                          .spendDiamonds(1);
-                                      if (ok) {
-                                        await ScoreService.instance
-                                            .unlockSkin('piranha');
-                                      }
-                                      return ok;
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-
-                                _ShopItem(
-                                  icon: '🐍',
-                                  iconBg: const Color(0xFF1A0A00),
-                                  title: 'Skin SERPENTE',
-                                  subtitle: ScoreService.instance
-                                          .isSkinUnlocked('serpente')
-                                      ? '✔ Desbloqueada'
-                                      : 'Lendária',
-                                  diamondCost: 2,
-                                  locked: ScoreService.instance
-                                      .isSkinUnlocked('serpente'),
-                                  onBuy: () => _buy(
-                                    label: 'Skin SERPENTE',
-                                    coinCost: 0,
-                                    diamondCost: 2,
-                                    action: () async {
-                                      if (ScoreService.instance
-                                          .isSkinUnlocked('serpente')) {
-                                        return false;
-                                      }
-                                      final ok = await ScoreService
-                                          .instance
-                                          .spendDiamonds(2);
-                                      if (ok) {
-                                        await ScoreService.instance
-                                            .unlockSkin('serpente');
-                                      }
-                                      return ok;
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-
-                                _ShopItem(
-                                  icon: '💎',
-                                  iconBg: const Color(0xFF001A2A),
-                                  title: '100 Moedas',
-                                  subtitle: 'Troca diamante por moedas',
-                                  diamondCost: 1,
-                                  onBuy: () => _buy(
-                                    label: '100 Moedas',
-                                    coinCost: 0,
-                                    diamondCost: 1,
-                                    action: () async {
-                                      final ok = await ScoreService
-                                          .instance
-                                          .spendDiamonds(1);
-                                      if (ok) {
-                                        await ScoreService.instance
-                                            .addCoins(100);
-                                      }
-                                      return ok;
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
+                              const SizedBox(height: 10),
+                              _ItemTile(
+                                icon: '🔥',
+                                bg: const Color(0xFF3A1A00),
+                                title: 'Trilha de Fogo',
+                                subtitle: 'Partículas de fogo ao dar boost',
+                                coinCost: 50,
+                                onBuy: () async {
+                                  final ok = await ScoreService.instance
+                                      .spendCoins(50);
+                                  _showFeedback(
+                                      ok
+                                          ? '✔ Trilha de Fogo ativada!'
+                                          : '✘ 50 moedas necessárias',
+                                      ok);
+                                  if (ok) {
+                                    await ScoreService.instance
+                                        .unlockCosmetic('trail_fire');
+                                  }
+                                  setState(() {});
+                                },
+                                locked: ScoreService.instance
+                                    .isCosmeticUnlocked('trail_fire'),
+                              ),
+                              const SizedBox(height: 10),
+                              _ItemTile(
+                                icon: '❄️',
+                                bg: const Color(0xFF001A3A),
+                                title: 'Trilha de Gelo',
+                                subtitle: 'Partículas geladas ao dar boost',
+                                coinCost: 50,
+                                onBuy: () async {
+                                  final ok = await ScoreService.instance
+                                      .spendCoins(50);
+                                  _showFeedback(
+                                      ok
+                                          ? '✔ Trilha de Gelo ativada!'
+                                          : '✘ 50 moedas necessárias',
+                                      ok);
+                                  if (ok) {
+                                    await ScoreService.instance
+                                        .unlockCosmetic('trail_ice');
+                                  }
+                                  setState(() {});
+                                },
+                                locked: ScoreService.instance
+                                    .isCosmeticUnlocked('trail_ice'),
+                              ),
+                              const SizedBox(height: 10),
+                              _ItemTile(
+                                icon: '⚡',
+                                bg: const Color(0xFF1A1A00),
+                                title: 'Trilha Elétrica',
+                                subtitle: 'Faíscas elétricas ao dar boost',
+                                coinCost: 50,
+                                onBuy: () async {
+                                  final ok = await ScoreService.instance
+                                      .spendCoins(50);
+                                  _showFeedback(
+                                      ok
+                                          ? '✔ Trilha Elétrica ativada!'
+                                          : '✘ 50 moedas necessárias',
+                                      ok);
+                                  if (ok) {
+                                    await ScoreService.instance
+                                        .unlockCosmetic('trail_electric');
+                                  }
+                                  setState(() {});
+                                },
+                                locked: ScoreService.instance
+                                    .isCosmeticUnlocked('trail_electric'),
+                              ),
+                              const SizedBox(height: 18),
+                              _SectionLabel(
+                                label: 'ACESSÓRIOS',
+                                icon: Icons.emoji_events_rounded,
+                                color: const Color(0xFFFFD600),
+                              ),
+                              const SizedBox(height: 10),
+                              _ItemTile(
+                                icon: '👑',
+                                bg: const Color(0xFF2A1A00),
+                                title: 'Coroa Dourada',
+                                subtitle: 'Aparece na cabeça da cobra',
+                                diamondCost: 1,
+                                onBuy: () async {
+                                  final ok = await ScoreService.instance
+                                      .spendDiamonds(1);
+                                  _showFeedback(
+                                      ok
+                                          ? '✔ Coroa equipada!'
+                                          : '✘ 1 diamante necessário',
+                                      ok);
+                                  if (ok) {
+                                    await ScoreService.instance
+                                        .unlockCosmetic('crown');
+                                  }
+                                  setState(() {});
+                                },
+                                locked: ScoreService.instance
+                                    .isCosmeticUnlocked('crown'),
+                              ),
+                              const SizedBox(height: 10),
+                              _ItemTile(
+                                icon: '🎩',
+                                bg: const Color(0xFF1A1A1A),
+                                title: 'Cartola',
+                                subtitle: 'Chapéu elegante na cabeça',
+                                coinCost: 80,
+                                onBuy: () async {
+                                  final ok = await ScoreService.instance
+                                      .spendCoins(80);
+                                  _showFeedback(
+                                      ok
+                                          ? '✔ Cartola equipada!'
+                                          : '✘ 80 moedas necessárias',
+                                      ok);
+                                  if (ok) {
+                                    await ScoreService.instance
+                                        .unlockCosmetic('hat');
+                                  }
+                                  setState(() {});
+                                },
+                                locked: ScoreService.instance
+                                    .isCosmeticUnlocked('hat'),
+                              ),
+                              const SizedBox(height: 10),
+                              _ItemTile(
+                                icon: '😎',
+                                bg: const Color(0xFF0A0A0A),
+                                title: 'Óculos Escuros',
+                                subtitle: 'Fica estilosa com óculos',
+                                coinCost: 60,
+                                onBuy: () async {
+                                  final ok = await ScoreService.instance
+                                      .spendCoins(60);
+                                  _showFeedback(
+                                      ok
+                                          ? '✔ Óculos equipados!'
+                                          : '✘ 60 moedas necessárias',
+                                      ok);
+                                  if (ok) {
+                                    await ScoreService.instance
+                                        .unlockCosmetic('glasses');
+                                  }
+                                  setState(() {});
+                                },
+                                locked: ScoreService.instance
+                                    .isCosmeticUnlocked('glasses'),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
+                ]),
               ),
             ),
           ),
@@ -435,77 +651,63 @@ class _ShopOverlayState extends State<ShopOverlay>
   }
 }
 
+class _Pill extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String value;
+  const _Pill({required this.icon, required this.color, required this.value});
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            color: color.withValues(alpha: 0.12),
+            border: Border.all(color: color.withValues(alpha: 0.3))),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: color, size: 12),
+          const SizedBox(width: 4),
+          Text(value,
+              style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  decoration: TextDecoration.none)),
+        ]),
+      );
+}
+
 class _SectionLabel extends StatelessWidget {
   final String label;
   final IconData icon;
   final Color color;
   const _SectionLabel(
       {required this.label, required this.icon, required this.color});
-
   @override
-  Widget build(BuildContext context) {
-    return Row(children: [
-      Icon(icon, color: color, size: 14),
-      const SizedBox(width: 6),
-      Text(label,
-          style: TextStyle(
-            color: color,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 2,
-            decoration: TextDecoration.none,
-          )),
-      const SizedBox(width: 8),
-      Expanded(
-          child: Container(height: 1, color: color.withOpacity(0.2))),
-    ]);
-  }
-}
-
-class _BalancePill extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String value;
-  const _BalancePill(
-      {required this.icon, required this.color, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: color.withOpacity(0.12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, color: color, size: 12),
-        const SizedBox(width: 4),
-        Text(value,
+  Widget build(BuildContext context) => Row(children: [
+        Icon(icon, color: color, size: 13),
+        const SizedBox(width: 6),
+        Text(label,
             style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              decoration: TextDecoration.none,
-            )),
-      ]),
-    );
-  }
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+                decoration: TextDecoration.none)),
+        const SizedBox(width: 8),
+        Expanded(
+            child: Container(height: 1, color: color.withValues(alpha: 0.2))),
+      ]);
 }
 
-class _ShopItem extends StatelessWidget {
-  final String icon;
-  final Color iconBg;
-  final String title;
-  final String subtitle;
-  final int coinCost;
-  final int diamondCost;
+class _ItemTile extends StatelessWidget {
+  final String icon, title, subtitle;
+  final Color bg;
+  final int coinCost, diamondCost;
   final bool locked;
   final VoidCallback onBuy;
-
-  const _ShopItem({
+  const _ItemTile({
     required this.icon,
-    required this.iconBg,
+    required this.bg,
     required this.title,
     required this.subtitle,
     this.coinCost = 0,
@@ -516,112 +718,83 @@ class _ShopItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDiamond = diamondCost > 0;
+    final cost = isDiamond ? diamondCost : coinCost;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: Colors.white.withOpacity(0.04),
-        border:
-            Border.all(color: Colors.white.withOpacity(0.08), width: 1),
-      ),
+          borderRadius: BorderRadius.circular(14),
+          color: Colors.white.withValues(alpha: 0.04),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
       child: Row(children: [
-        // Ícone
         Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12), color: iconBg),
-          child: Center(
-              child: Text(icon,
-                  style: const TextStyle(
-                      fontSize: 22, decoration: TextDecoration.none))),
-        ),
-        const SizedBox(width: 12),
-        // Info
-        Expanded(
-          child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12), color: bg),
+            child: Center(
+                child: Text(icon,
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      decoration: TextDecoration.none,
-                    )),
-                const SizedBox(height: 2),
-                Text(subtitle,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.45),
-                      fontSize: 11,
-                      decoration: TextDecoration.none,
-                    )),
-              ]),
-        ),
+                        fontSize: 22, decoration: TextDecoration.none)))),
+        const SizedBox(width: 12),
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  decoration: TextDecoration.none)),
+          Text(subtitle,
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  fontSize: 11,
+                  decoration: TextDecoration.none)),
+        ])),
         const SizedBox(width: 10),
-        // Botão comprar
         locked
             ? Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: Colors.white.withOpacity(0.06),
-                ),
+                    borderRadius: BorderRadius.circular(10),
+                    color: Colors.white.withValues(alpha: 0.06)),
                 child: const Text('OK',
                     style: TextStyle(
-                      color: Colors.white38,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      decoration: TextDecoration.none,
-                    )),
-              )
+                        color: Colors.white38,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        decoration: TextDecoration.none)))
             : GestureDetector(
                 onTap: onBuy,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
                     gradient: LinearGradient(
-                      colors: diamondCost > 0
-                          ? [
-                              const Color(0xFF00B4D8),
-                              const Color(0xFF0077B6)
-                            ]
-                          : [
-                              const Color(0xFFFFAA00),
-                              const Color(0xFFFF6B00)
-                            ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (diamondCost > 0
-                                ? const Color(0xFF00E5FF)
-                                : const Color(0xFFFFD600))
-                            .withOpacity(0.35),
-                        blurRadius: 8,
-                      )
-                    ],
+                        colors: isDiamond
+                            ? [const Color(0xFF00B4D8), const Color(0xFF0077B6)]
+                            : [
+                                const Color(0xFFFFAA00),
+                                const Color(0xFFFF6B00)
+                              ]),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(
-                      diamondCost > 0
-                          ? Icons.diamond_rounded
-                          : Icons.monetization_on_rounded,
-                      color: Colors.white,
-                      size: 13,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${diamondCost > 0 ? diamondCost : coinCost}',
-                      style: const TextStyle(
+                        isDiamond
+                            ? Icons.diamond_rounded
+                            : Icons.monetization_on_rounded,
                         color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
+                        size: 13),
+                    const SizedBox(width: 4),
+                    Text('$cost',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.none)),
                   ]),
                 ),
               ),

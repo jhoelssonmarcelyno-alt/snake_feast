@@ -1,6 +1,6 @@
 // lib/game/engine_camera.dart
-import 'package:flame/components.dart';
 import 'snake_engine.dart';
+import 'package:flame/components.dart';
 
 extension EngineCamera on SnakeEngine {
   void updateCamera() {

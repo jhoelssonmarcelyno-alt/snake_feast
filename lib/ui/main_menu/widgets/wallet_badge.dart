@@ -28,9 +28,9 @@ class WalletBadge extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: Colors.black.withOpacity(0.55),
+                color: Colors.black.withValues(alpha: 0.55),
                 border: Border.all(
-                    color: const Color(0xFFFFD600).withOpacity(0.3)),
+                    color: const Color(0xFFFFD600).withValues(alpha: 0.3)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(Icons.monetization_on_rounded,

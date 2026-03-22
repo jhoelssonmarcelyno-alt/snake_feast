@@ -34,12 +34,12 @@ class _SkinArrowState extends State<SkinArrow> {
           margin: EdgeInsets.symmetric(horizontal: 5 * s),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.black.withOpacity(0.55),
+            color: Colors.black.withValues(alpha: 0.55),
             border: Border.all(
-                color: const Color(0xFFFFD600).withOpacity(0.6), width: 1.5),
+                color: const Color(0xFFFFD600).withValues(alpha: 0.6), width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFFFD600).withOpacity(0.2),
+                color: const Color(0xFFFFD600).withValues(alpha: 0.2),
                 blurRadius: 8,
               ),
             ],

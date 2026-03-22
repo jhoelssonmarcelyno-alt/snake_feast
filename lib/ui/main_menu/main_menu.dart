@@ -1,17 +1,21 @@
 // lib/ui/main_menu/main_menu.dart
-import 'dart:math';
+// Orquestra o menu principal — apenas layout, sem lógica inline
 import 'package:flutter/material.dart';
 import '../../game/snake_engine.dart';
 import '../../services/score_service.dart';
 import '../../utils/constants.dart';
 import 'models/particle.dart';
 import 'painters/particle_painter.dart';
-import 'painters/snake_preview_painter.dart';
-import 'widgets/play_button.dart';
-import 'widgets/tip_widgets.dart';
-import 'widgets/skin_arrow.dart';
+import 'painters/grass_painter.dart';
+import 'widgets/menu_title.dart';
+import 'widgets/name_field.dart';
+import 'widgets/skin_selector.dart';
+import 'widgets/play_row.dart';
+import 'widgets/tips_column.dart';
 import 'widgets/glow_icon_button.dart';
 import 'widgets/wallet_badge.dart';
+import '../../overlays/lobby_overlay.dart';
+import 'dart:math';
 
 class MainMenuOverlay extends StatefulWidget {
   final SnakeEngine engine;
@@ -23,16 +27,19 @@ class MainMenuOverlay extends StatefulWidget {
 
 class _MainMenuOverlayState extends State<MainMenuOverlay>
     with TickerProviderStateMixin {
-  late final AnimationController _entryCtrl;
+  // ── Animações ─────────────────────────────────────────────
+  late final AnimationController _entryCtrl,
+      _snakeCtrl,
+      _particleCtrl,
+      _borderCtrl,
+      _glowCtrl;
   late final Animation<double> _titleFade, _subtitleFade, _cardFade, _btnFade;
   late final Animation<Offset> _titleSlide, _cardSlide;
-  late final AnimationController _snakeCtrl;
-  late final AnimationController _particleCtrl;
   late final List<Particle> _particles;
-  late final AnimationController _borderCtrl;
-  late final AnimationController _glowCtrl;
 
+  // ── Estado ────────────────────────────────────────────────
   int _selectedSkin = 0;
+  bool _isOnline = false;
   late final TextEditingController _nameController;
 
   @override
@@ -47,27 +54,23 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
     _titleFade = CurvedAnimation(
         parent: _entryCtrl,
         curve: const Interval(0.0, 0.4, curve: Curves.easeOut));
-    _titleSlide =
-        Tween<Offset>(begin: const Offset(0, -0.4), end: Offset.zero).animate(
-            CurvedAnimation(
-                parent: _entryCtrl,
-                curve:
-                    const Interval(0.0, 0.45, curve: Curves.easeOutCubic)));
     _subtitleFade = CurvedAnimation(
         parent: _entryCtrl,
         curve: const Interval(0.2, 0.55, curve: Curves.easeOut));
     _cardFade = CurvedAnimation(
         parent: _entryCtrl,
         curve: const Interval(0.3, 0.7, curve: Curves.easeOut));
-    _cardSlide =
-        Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
-            CurvedAnimation(
-                parent: _entryCtrl,
-                curve:
-                    const Interval(0.3, 0.7, curve: Curves.easeOutCubic)));
     _btnFade = CurvedAnimation(
         parent: _entryCtrl,
         curve: const Interval(0.5, 1.0, curve: Curves.easeOut));
+    _titleSlide = Tween<Offset>(begin: const Offset(0, -0.4), end: Offset.zero)
+        .animate(CurvedAnimation(
+            parent: _entryCtrl,
+            curve: const Interval(0.0, 0.45, curve: Curves.easeOutCubic)));
+    _cardSlide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
+        .animate(CurvedAnimation(
+            parent: _entryCtrl,
+            curve: const Interval(0.3, 0.7, curve: Curves.easeOutCubic)));
 
     _snakeCtrl =
         AnimationController(vsync: this, duration: const Duration(seconds: 3))
@@ -82,8 +85,7 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
         vsync: this, duration: const Duration(milliseconds: 1800))
       ..repeat(reverse: true);
 
-    final rng = Random();
-    _particles = List.generate(20, (_) => Particle(rng));
+    _particles = List.generate(20, (_) => Particle(Random()));
     _entryCtrl.forward();
   }
 
@@ -98,42 +100,50 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
     super.dispose();
   }
 
-  void _selectSkin(int index) {
-    setState(() => _selectedSkin = index);
-    widget.engine.setSkin(index);
+  // ── Ações ─────────────────────────────────────────────────
+  void _selectSkin(int i) {
+    setState(() => _selectedSkin = i);
+    widget.engine.setSkin(i);
   }
 
-  void _prevSkin() =>
-      _selectSkin((_selectedSkin - 1 + kPlayerSkins.length) % kPlayerSkins.length);
-  void _nextSkin() =>
-      _selectSkin((_selectedSkin + 1) % kPlayerSkins.length);
-
-  void _openSettings() => widget.engine.overlays.add(kOverlaySettings);
-  void _openShop() => widget.engine.overlays.add(kOverlayShop);
+  void _prevSkin() => _selectSkin(
+      (_selectedSkin - 1 + kPlayerSkins.length) % kPlayerSkins.length);
+  void _nextSkin() => _selectSkin((_selectedSkin + 1) % kPlayerSkins.length);
+  void _onPlay() => widget.engine.player.isAlive
+      ? widget.engine.startGame()
+      : widget.engine.restartGame();
+  void _onMulti() {
+    setState(() => _isOnline = !_isOnline);
+    if (_isOnline) {
+      widget.engine.overlays.add(kOverlayLobby);
+    }
+  }
+  void _onShop() => widget.engine.overlays.add(kOverlayShop);
+  void _onSettings() => widget.engine.overlays.add(kOverlaySettings);
+  void _onName(String v) {
+    ScoreService.instance.savePlayerName(v);
+    widget.engine.player.name = v.trim().isEmpty ? 'Você' : v.trim();
+  }
 
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final size = mq.size;
     final safeH = size.height - mq.padding.top - mq.padding.bottom;
-    final skin = kPlayerSkins[_selectedSkin];
+    final scale = (safeH / 440.0).clamp(0.50, 1.0);
     final hs = ScoreService.instance.highScore;
     final coins = ScoreService.instance.coins;
     final diamonds = ScoreService.instance.diamonds;
-    final double scale = (safeH / 411.0).clamp(0.55, 1.1);
 
     return Material(
       color: Colors.transparent,
       child: DefaultTextStyle(
         style: const TextStyle(
-          decoration: TextDecoration.none,
-          decorationColor: Colors.transparent,
-          decorationThickness: 0,
-        ),
+            decoration: TextDecoration.none, decorationThickness: 0),
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // ── Fundo verde gramado ───────────────────────────
+            // ── Fundo gradiente ──────────────────────────────
             Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
@@ -144,13 +154,10 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
               ),
             ),
 
-            // ── Padrão de grama sutil ─────────────────────────
-            CustomPaint(
-              size: size,
-              painter: _GrassPainter(),
-            ),
+            // ── Grama ────────────────────────────────────────
+            CustomPaint(size: size, painter: GrassPainter()),
 
-            // ── Partículas ────────────────────────────────────
+            // ── Partículas ───────────────────────────────────
             AnimatedBuilder(
               animation: _particleCtrl,
               builder: (_, __) => CustomPaint(
@@ -159,12 +166,144 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
               ),
             ),
 
-            // ── Saldo moedas/diamantes ────────────────────────
-            WalletBadge(
-              coins: coins,
-              diamonds: diamonds,
-              fadeAnim: _btnFade,
+            // ── Conteúdo scrollável (título + nome + skin) ───
+            Positioned.fill(
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.only(
+                    top: 8,
+                    // Espaço embaixo para não sobrepor o botão JOGAR fixo
+                    bottom: 100 * scale,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Título
+                      MenuTitle(
+                        scale: scale,
+                        titleFade: _titleFade,
+                        subtitleFade: _subtitleFade,
+                        titleSlide: _titleSlide,
+                      ),
+
+                      SizedBox(height: 12 * scale),
+
+                      // Campo de nome
+                      NameField(
+                        controller: _nameController,
+                        fadeAnim: _cardFade,
+                        scale: scale,
+                        onChanged: _onName,
+                      ),
+
+                      SizedBox(height: 12 * scale),
+
+                      // Seletor de skin
+                      SkinSelector(
+                        selectedSkin: _selectedSkin,
+                        snakeCtrl: _snakeCtrl,
+                        cardFade: _cardFade,
+                        cardSlide: _cardSlide,
+                        scale: scale,
+                        onPrev: _prevSkin,
+                        onNext: _nextSkin,
+                        onSelect: _selectSkin,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
+
+            // ── Botão JOGAR + MULTI — fixo embaixo ao centro ─
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 16,
+              child: Center(
+                child: PlayRow(
+                  borderCtrl: _borderCtrl,
+                  glowCtrl: _glowCtrl,
+                  btnFade: _btnFade,
+                  scale: scale,
+                  highScore: hs,
+                  onPlay: _onPlay,
+                  onMulti: _onMulti,
+                ),
+              ),
+            ),
+
+            // ── Dicas canto esquerdo ─────────────────────────
+            Positioned(
+              left: 12,
+              bottom: 20,
+              child: TipsColumn(fadeAnim: _btnFade),
+            ),
+
+            // ── Botão Online/Offline ─────────────────────────────
+            Positioned(
+              top: 0,
+              left: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 10, left: 12),
+                  child: FadeTransition(
+                    opacity: _btnFade,
+                    child: GestureDetector(
+                      onTap: _onMulti,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          color: _isOnline
+                              ? const Color(0xFF29CFFF).withOpacity(0.25)
+                              : Colors.black.withOpacity(0.25),
+                          border: Border.all(
+                            color: _isOnline
+                                ? const Color(0xFF29CFFF)
+                                : Colors.white.withOpacity(0.35),
+                            width: 1.5,
+                          ),
+                          boxShadow: _isOnline
+                              ? [BoxShadow(
+                                  color: const Color(0xFF29CFFF).withOpacity(0.3),
+                                  blurRadius: 10)]
+                              : [],
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(
+                            _isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                            color: _isOnline
+                                ? const Color(0xFF29CFFF)
+                                : Colors.white.withOpacity(0.55),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _isOnline ? 'ONLINE' : 'OFFLINE',
+                            style: TextStyle(
+                              color: _isOnline
+                                  ? const Color(0xFF29CFFF)
+                                  : Colors.white.withOpacity(0.55),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.5,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Saldo ────────────────────────────────────────
+            WalletBadge(coins: coins, diamonds: diamonds, fadeAnim: _btnFade),
 
             // ── Botões topo direito ──────────────────────────
             Positioned(
@@ -177,352 +316,16 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
                     opacity: _btnFade,
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       GlowIconButton(
-                        onTap: _openShop,
-                        color: const Color(0xFFFFD600),
-                        icon: Icons.store_rounded,
-                      ),
+                          onTap: _onShop,
+                          color: const Color(0xFFFFD600),
+                          icon: Icons.store_rounded),
                       const SizedBox(width: 8),
                       GlowIconButton(
-                        onTap: _openSettings,
-                        color: const Color(0xFF29CFFF),
-                        icon: Icons.settings_rounded,
-                      ),
+                          onTap: _onSettings,
+                          color: const Color(0xFF29CFFF),
+                          icon: Icons.settings_rounded),
                     ]),
                   ),
-                ),
-              ),
-            ),
-
-            // ── Conteúdo ──────────────────────────────────────
-            Positioned.fill(
-              child: SafeArea(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // ── TÍTULO SNAKE FEAST ─────────────────────
-                    SlideTransition(
-                      position: _titleSlide,
-                      child: FadeTransition(
-                        opacity: _titleFade,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Título cartoon colorido
-                            _SnakeFeastTitle(scale: scale),
-                            const SizedBox(height: 4),
-                            FadeTransition(
-                              opacity: _subtitleFade,
-                              child: Text(
-                                'O SEU DESAFIO DE COBRA!',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9 * scale,
-                                  letterSpacing: 2,
-                                  fontWeight: FontWeight.w700,
-                                  decoration: TextDecoration.none,
-                                  shadows: [
-                                    Shadow(
-                                        color: Colors.black.withOpacity(0.4),
-                                        blurRadius: 4)
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // ── Campo de nome ──────────────────────────
-                    FadeTransition(
-                      opacity: _cardFade,
-                      child: Container(
-                        width: 220 * scale,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          color: Colors.white.withOpacity(0.9),
-                          boxShadow: [
-                            BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 6,
-                                offset: const Offset(0, 3))
-                          ],
-                        ),
-                        child: Row(children: [
-                          const SizedBox(width: 12),
-                          const Icon(Icons.person_rounded,
-                              color: Color(0xFF27AE35), size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: _nameController,
-                              maxLength: 12,
-                              style: const TextStyle(
-                                color: Color(0xFF1A5C2A),
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.none,
-                              ),
-                              decoration: const InputDecoration(
-                                hintText: 'Seu nome...',
-                                hintStyle: TextStyle(
-                                    color: Color(0x88336633), fontSize: 13),
-                                border: InputBorder.none,
-                                counterText: '',
-                                isDense: true,
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                              onChanged: (v) {
-                                ScoreService.instance.savePlayerName(v);
-                                widget.engine.player.name =
-                                    v.trim().isEmpty ? 'Você' : v.trim();
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ]),
-                      ),
-                    ),
-
-                    // ── Seletor de skin ────────────────────────
-                    FadeTransition(
-                      opacity: _cardFade,
-                      child: SlideTransition(
-                        position: _cardSlide,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                SkinArrow(
-                                    icon: Icons.chevron_left_rounded,
-                                    onTap: _prevSkin,
-                                    scale: scale),
-                                // Preview da cobra
-                                Container(
-                                  width: 200 * scale,
-                                  height: 72 * scale,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(36),
-                                    border: Border.all(
-                                      color: Colors.white.withOpacity(0.5),
-                                      width: 2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: skin.accentColor.withOpacity(0.4),
-                                        blurRadius: 16,
-                                        spreadRadius: 2,
-                                      ),
-                                    ],
-                                  ),
-                                  clipBehavior: Clip.hardEdge,
-                                  child: AnimatedBuilder(
-                                    animation: _snakeCtrl,
-                                    builder: (_, __) => CustomPaint(
-                                      painter: SnakePreviewPainter(
-                                          skin: skin,
-                                          t: _snakeCtrl.value * pi * 2),
-                                    ),
-                                  ),
-                                ),
-                                SkinArrow(
-                                    icon: Icons.chevron_right_rounded,
-                                    onTap: _nextSkin,
-                                    scale: scale),
-                              ],
-                            ),
-                            SizedBox(height: 6 * scale),
-                            // Nome da skin em card branco
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 16 * scale, vertical: 4 * scale),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: Colors.white.withOpacity(0.4)),
-                              ),
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 250),
-                                child: Text(
-                                  skin.name,
-                                  key: ValueKey(skin.id),
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13 * scale,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 4,
-                                    decoration: TextDecoration.none,
-                                    shadows: [
-                                      Shadow(
-                                          color: skin.accentColor,
-                                          blurRadius: 8)
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            SizedBox(height: 6 * scale),
-                            // Dots
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: List.generate(kPlayerSkins.length, (i) {
-                                final bool on = i == _selectedSkin;
-                                return GestureDetector(
-                                  onTap: () => _selectSkin(i),
-                                  child: AnimatedContainer(
-                                    duration:
-                                        const Duration(milliseconds: 250),
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 2.5),
-                                    width: on ? 14 : 6,
-                                    height: 6,
-                                    decoration: BoxDecoration(
-                                      color: on
-                                          ? Colors.white
-                                          : Colors.white.withOpacity(0.35),
-                                      borderRadius: BorderRadius.circular(3),
-                                      boxShadow: on
-                                          ? [
-                                              BoxShadow(
-                                                color: Colors.white
-                                                    .withOpacity(0.6),
-                                                blurRadius: 4,
-                                              )
-                                            ]
-                                          : null,
-                                    ),
-                                  ),
-                                );
-                              }),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // ── Dicas coloridas ────────────────────────
-                    FadeTransition(
-                      opacity: _cardFade,
-                      child: SlideTransition(
-                        position: _cardSlide,
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 20),
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10 * scale),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            color: Colors.black.withOpacity(0.2),
-                            border: Border.all(
-                                color: Colors.white.withOpacity(0.2)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              Tip(
-                                icon: '☝',
-                                label: 'Arraste\np/ mover',
-                                scale: scale,
-                                color: const Color(0xFFFF9500),
-                              ),
-                              const TipDivider(),
-                              Tip(
-                                icon: '✦',
-                                label: 'Coma p/\ncrescer',
-                                scale: scale,
-                                color: const Color(0xFF2ECC71),
-                              ),
-                              const TipDivider(),
-                              Tip(
-                                icon: '⚡',
-                                label: 'Boost\nbotão',
-                                scale: scale,
-                                color: const Color(0xFFFF9500),
-                              ),
-                              const TipDivider(),
-                              Tip(
-                                icon: '☠',
-                                label: 'Evite\ncolisões',
-                                scale: scale,
-                                color: const Color(0xFFE74C3C),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // ── Botão JOGAR ────────────────────────────
-                    FadeTransition(
-                      opacity: _btnFade,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AnimatedBuilder(
-                            animation: _borderCtrl,
-                            builder: (_, __) => PlayButton(
-                              borderProgress: _borderCtrl.value,
-                              onTap: () {
-                                if (!widget.engine.player.isAlive) {
-                                  widget.engine.restartGame();
-                                } else {
-                                  widget.engine.startGame();
-                                }
-                              },
-                              scale: scale,
-                            ),
-                          ),
-                          SizedBox(height: 6 * scale),
-                          hs > 0
-                              ? Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(Icons.emoji_events_rounded,
-                                        color: Colors.white, size: 13),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'RECORDE: $hs',
-                                      style: TextStyle(
-                                        color: Colors.white
-                                            .withOpacity(0.85),
-                                        fontSize: 9 * scale,
-                                        letterSpacing: 2,
-                                        fontWeight: FontWeight.bold,
-                                        decoration: TextDecoration.none,
-                                        shadows: [
-                                          Shadow(
-                                              color: Colors.black
-                                                  .withOpacity(0.4),
-                                              blurRadius: 4)
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : Text(
-                                  'TOQUE PARA COMEÇAR',
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.7),
-                                    fontSize: 8 * scale,
-                                    letterSpacing: 3,
-                                    fontWeight: FontWeight.w600,
-                                    decoration: TextDecoration.none,
-                                    shadows: [
-                                      Shadow(
-                                          color:
-                                              Colors.black.withOpacity(0.4),
-                                          blurRadius: 4)
-                                    ],
-                                  ),
-                                ),
-                        ],
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ),
@@ -531,80 +334,4 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
       ),
     );
   }
-}
-
-// ── Título SNAKE FEAST estilo cartoon ─────────────────────────
-class _SnakeFeastTitle extends StatelessWidget {
-  final double scale;
-  const _SnakeFeastTitle({required this.scale});
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Sombra
-        Text(
-          'SNAKE FEAST',
-          style: TextStyle(
-            fontSize: 36 * scale,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 3,
-            foreground: Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 6
-              ..color = Colors.black.withOpacity(0.35),
-            decoration: TextDecoration.none,
-          ),
-        ),
-        // Texto com gradiente colorido
-        ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            colors: [
-              Color(0xFFFFD700), // dourado
-              Color(0xFFFF6B35), // laranja
-              Color(0xFFFF3CAC), // rosa
-              Color(0xFF784BA0), // roxo
-              Color(0xFF29CFFF), // azul
-            ],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ).createShader(bounds),
-          child: Text(
-            'SNAKE FEAST',
-            style: TextStyle(
-              fontSize: 36 * scale,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              letterSpacing: 3,
-              decoration: TextDecoration.none,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Painter de grama decorativa no fundo ─────────────────────
-class _GrassPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.06)
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    final rng = Random(42);
-    for (int i = 0; i < 60; i++) {
-      final x = rng.nextDouble() * size.width;
-      final y = rng.nextDouble() * size.height;
-      final h = 8.0 + rng.nextDouble() * 12;
-      canvas.drawLine(Offset(x, y), Offset(x + 2, y - h), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_) => false;
 }

@@ -1,10 +1,10 @@
 // lib/game/engine_food.dart
 import 'dart:math';
 import 'dart:ui' show Color;
-import 'package:flame/components.dart';
 import '../components/food.dart';
-import '../utils/constants.dart';
 import 'snake_engine.dart';
+import '../utils/constants.dart';
+import 'package:flame/components.dart';
 
 extension EngineFood on SnakeEngine {
   void spawnCommonFood(int count) {
@@ -20,18 +20,39 @@ extension EngineFood on SnakeEngine {
     }
   }
 
+  /// Spawna estrelas bônus = 10% da contagem de comida comum
+  void spawnStars() {
+    final int count = (foods.where((f) => f.type == FoodType.common).length * 0.10).ceil().clamp(1, 50);
+    for (int i = 0; i < count; i++) {
+      foods.add(Food.star(
+        position: Vector2(
+          kWallThickness + rng.nextDouble() * (worldSize.x - kWallThickness * 2),
+          kWallThickness + rng.nextDouble() * (worldSize.y - kWallThickness * 2),
+        ),
+      ));
+    }
+  }
+
   void consumeFood(Food food, dynamic snake) {
     if (!foods.contains(food)) return;
     foods.remove(food);
     if (food.type == FoodType.common) {
       foods.add(Food.common(
         position: Vector2(
-          kWallThickness +
-              rng.nextDouble() * (worldSize.x - kWallThickness * 2),
-          kWallThickness +
-              rng.nextDouble() * (worldSize.y - kWallThickness * 2),
+          kWallThickness + rng.nextDouble() * (worldSize.x - kWallThickness * 2),
+          kWallThickness + rng.nextDouble() * (worldSize.y - kWallThickness * 2),
         ),
       ));
+    } else if (food.type == FoodType.star) {
+      // Respawna estrela em posição aleatória após delay
+      Future.delayed(const Duration(seconds: 8), () {
+        foods.add(Food.star(
+          position: Vector2(
+            kWallThickness + rng.nextDouble() * (worldSize.x - kWallThickness * 2),
+            kWallThickness + rng.nextDouble() * (worldSize.y - kWallThickness * 2),
+          ),
+        ));
+      });
     }
   }
 

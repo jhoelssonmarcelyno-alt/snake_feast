@@ -64,7 +64,7 @@ class _PlayButtonState extends State<PlayButton>
               // Borda laranja pulsante
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFFF9500).withOpacity(0.8),
+                  color: const Color(0xFFFF9500).withValues(alpha: 0.8),
                   blurRadius: _glow.value * 2,
                   spreadRadius: 2,
                 ),
@@ -91,7 +91,7 @@ class _PlayButtonState extends State<PlayButton>
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 0,
                 offset: const Offset(0, 4),
               ),
@@ -105,7 +105,7 @@ class _PlayButtonState extends State<PlayButton>
                   size: 28 * s,
                   shadows: [
                     Shadow(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         blurRadius: 4)
                   ]),
               SizedBox(width: 6 * s),
@@ -119,7 +119,7 @@ class _PlayButtonState extends State<PlayButton>
                   decoration: TextDecoration.none,
                   shadows: [
                     Shadow(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         blurRadius: 4,
                         offset: const Offset(0, 2))
                   ],

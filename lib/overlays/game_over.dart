@@ -38,12 +38,20 @@ class _GameOverOverlayState extends State<GameOverOverlay>
     super.dispose();
   }
 
+  void _goMenu() {
+    widget.engine.overlays.remove(kOverlayGameOver);
+    widget.engine.overlays.add(kOverlayMainMenu);
+    widget.engine.pauseEngine();
+  }
+
   @override
   Widget build(BuildContext context) {
     final coins = ScoreService.instance.coins;
     final diamonds = ScoreService.instance.diamonds;
     final hasRewards = _coinsEarned > 0 || _diamondsEarned > 0;
     final mq = MediaQuery.of(context);
+    // ✅ Altura disponível descontando padding do sistema
+    final availableH = mq.size.height - mq.padding.top - mq.padding.bottom;
 
     return Material(
       color: Colors.transparent,
@@ -54,70 +62,97 @@ class _GameOverOverlayState extends State<GameOverOverlay>
           decorationThickness: 0,
         ),
         child: Container(
-          color: Colors.black.withOpacity(0.80),
+          color: Colors.black.withValues(alpha: 0.80),
           child: SafeArea(
             child: Center(
               child: FadeTransition(
                 opacity: _fade,
                 child: ScaleTransition(
                   scale: _scale,
-                  child: SingleChildScrollView(
-                    physics: const NeverScrollableScrollPhysics(),
-                    child: Container(
-                      width: mq.size.width * 0.78,
-                      constraints: BoxConstraints(
-                        maxWidth: 420,
-                        maxHeight: mq.size.height * 0.90,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        color: const Color(0xFF0D1B2A),
-                        border: Border.all(
-                          color: const Color(0xFF1E3A5F),
-                          width: 1,
+                  child: Container(
+                    width: mq.size.width * 0.82,
+                    // ✅ Limita altura para nunca ultrapassar a tela
+                    constraints: BoxConstraints(
+                      maxWidth: 420,
+                      maxHeight: availableH * 0.90,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      color: const Color(0xFF0D1B2A),
+                      border:
+                          Border.all(color: const Color(0xFF1E3A5F), width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          blurRadius: 40,
+                          spreadRadius: 5,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.6),
-                            blurRadius: 40,
-                            spreadRadius: 5,
+                      ],
+                    ),
+                    // ✅ Column com Expanded + scroll para o body
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ── Cabeçalho ───────────────────────────
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: const BoxDecoration(
+                            borderRadius:
+                                BorderRadius.vertical(top: Radius.circular(20)),
+                            color: Color(0xFFBF1515),
                           ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // ── Cabeçalho ──────────────────────────
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 18),
-                            decoration: const BoxDecoration(
-                              borderRadius: BorderRadius.vertical(
-                                  top: Radius.circular(20)),
-                              color: Color(0xFFBF1515),
-                            ),
-                            child: const Column(
-                              children: [
-                                Icon(Icons.close_rounded,
-                                    color: Colors.white, size: 28),
-                                SizedBox(height: 6),
-                                Text(
-                                  'GAME OVER',
-                                  style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
-                                    letterSpacing: 6,
-                                    decoration: TextDecoration.none,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              const Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.close_rounded,
+                                      color: Colors.white, size: 26),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'GAME OVER',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                      letterSpacing: 6,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              // ✅ Botão X clicável no canto superior direito
+                              Positioned(
+                                top: 0,
+                                right: 8,
+                                child: GestureDetector(
+                                  onTap: _goMenu,
+                                  child: Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.white.withValues(alpha: 0.12),
+                                    ),
+                                    child: const Icon(
+                                      Icons.close_rounded,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
+                        ),
 
-                          // ── Body ───────────────────────────────
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                        // ── Body com scroll ─────────────────────
+                        Flexible(
+                          child: SingleChildScrollView(
+                            physics: const ClampingScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -145,17 +180,17 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                                   valueColor: const Color(0xFFFFAB40),
                                 ),
                                 if (hasRewards) ...[
-                                  const SizedBox(height: 14),
+                                  const SizedBox(height: 12),
                                   Container(
                                     width: double.infinity,
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 14, vertical: 12),
+                                        horizontal: 14, vertical: 10),
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(12),
-                                      color: Colors.white.withOpacity(0.04),
+                                      color: Colors.white.withValues(alpha: 0.04),
                                       border: Border.all(
                                           color:
-                                              Colors.white.withOpacity(0.08)),
+                                              Colors.white.withValues(alpha: 0.08)),
                                     ),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
@@ -164,14 +199,14 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                                           'RECOMPENSAS',
                                           style: TextStyle(
                                             color:
-                                                Colors.white.withOpacity(0.4),
+                                                Colors.white.withValues(alpha: 0.4),
                                             fontSize: 9,
                                             letterSpacing: 3,
                                             fontWeight: FontWeight.bold,
                                             decoration: TextDecoration.none,
                                           ),
                                         ),
-                                        const SizedBox(height: 10),
+                                        const SizedBox(height: 8),
                                         if (_coinsEarned > 0)
                                           _RewardChip(
                                             icon: Icons.monetization_on_rounded,
@@ -210,7 +245,7 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 14),
                                 _ActionButton(
                                   label: 'JOGAR NOVAMENTE',
                                   icon: Icons.replay_rounded,
@@ -223,19 +258,13 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                                   icon: Icons.home_rounded,
                                   color: const Color(0xFF546E7A),
                                   outlined: true,
-                                  onTap: () {
-                                    widget.engine.overlays
-                                        .remove(kOverlayGameOver);
-                                    widget.engine.overlays
-                                        .add(kOverlayMainMenu);
-                                    widget.engine.pauseEngine();
-                                  },
+                                  onTap: _goMenu,
                                 ),
                               ],
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -247,6 +276,8 @@ class _GameOverOverlayState extends State<GameOverOverlay>
     );
   }
 }
+
+// ── Widgets auxiliares ────────────────────────────────────────
 
 class _StatRow extends StatelessWidget {
   final IconData icon;
@@ -265,11 +296,11 @@ class _StatRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, color: iconColor.withOpacity(0.8), size: 14),
+        Icon(icon, color: iconColor.withValues(alpha: 0.8), size: 14),
         const SizedBox(width: 8),
         Text(label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.45),
+              color: Colors.white.withValues(alpha: 0.45),
               fontSize: 13,
               decoration: TextDecoration.none,
             )),
@@ -305,7 +336,7 @@ class _RewardChip extends StatelessWidget {
         const SizedBox(width: 7),
         Text(label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               fontSize: 13,
               decoration: TextDecoration.none,
             )),
@@ -314,18 +345,16 @@ class _RewardChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            color: color.withOpacity(0.15),
-            border: Border.all(color: color.withOpacity(0.4), width: 1),
+            color: color.withValues(alpha: 0.15),
+            border: Border.all(color: color.withValues(alpha: 0.4), width: 1),
           ),
-          child: Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              decoration: TextDecoration.none,
-            ),
-          ),
+          child: Text(value,
+              style: TextStyle(
+                color: color,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                decoration: TextDecoration.none,
+              )),
         ),
       ],
     );
@@ -348,21 +377,19 @@ class _BalanceChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        color: color.withOpacity(0.1),
-        border: Border.all(color: color.withOpacity(0.3), width: 1),
+        color: color.withValues(alpha: 0.1),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, color: color, size: 15),
         const SizedBox(width: 6),
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            decoration: TextDecoration.none,
-          ),
-        ),
+        Text(value,
+            style: TextStyle(
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              decoration: TextDecoration.none,
+            )),
       ]),
     );
   }
@@ -408,9 +435,9 @@ class _ActionButtonState extends State<_ActionButton> {
             borderRadius: BorderRadius.circular(10),
             color: widget.outlined
                 ? Colors.transparent
-                : widget.color.withOpacity(_pressed ? 0.85 : 1.0),
+                : widget.color.withValues(alpha: _pressed ? 0.85 : 1.0),
             border: widget.outlined
-                ? Border.all(color: widget.color.withOpacity(0.4), width: 1.2)
+                ? Border.all(color: widget.color.withValues(alpha: 0.4), width: 1.2)
                 : null,
           ),
           child: Row(

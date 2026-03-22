@@ -108,6 +108,7 @@ class _HudOverlayState extends State<HudOverlay> {
     final hs = ScoreService.instance.highScore;
     final coins = ScoreService.instance.coins;
     final diamonds = ScoreService.instance.diamonds;
+    final revives = ScoreService.instance.revives;
     final isRecord = score >= hs && score > 0;
     final size = MediaQuery.of(context).size;
     final isBoosting = widget.engine.player.isBoosting;
@@ -115,10 +116,6 @@ class _HudOverlayState extends State<HudOverlay> {
     const double boostSize = 76.0;
     const double boostRight = 24.0;
     const double boostBottom = 24.0;
-
-    // Pause fica acima do boost
-    const double pauseBottom = boostBottom + boostSize + 80.0;
-    // Minimap fica acima do pause (via engine_render, só ajustamos o pause aqui)
 
     return Material(
       color: Colors.transparent,
@@ -145,31 +142,37 @@ class _HudOverlayState extends State<HudOverlay> {
                       left: size.width * 0.10,
                       bottom: size.height * 0.10,
                       child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white.withOpacity(0.04),
-                                border: Border.all(
-                                    color: Colors.white.withOpacity(0.10),
-                                    width: 1.5),
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: 0.04),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.10),
+                                width: 1.5,
                               ),
-                              child: Icon(Icons.gamepad_outlined,
-                                  color: Colors.white.withOpacity(0.12),
-                                  size: 20),
                             ),
-                            const SizedBox(height: 5),
-                            Text('Arraste aqui',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.09),
-                                  fontSize: 9,
-                                  letterSpacing: 1.5,
-                                  decoration: TextDecoration.none,
-                                )),
-                          ]),
+                            child: Icon(
+                              Icons.gamepad_outlined,
+                              color: Colors.white.withValues(alpha: 0.12),
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'Arraste aqui',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.09),
+                              fontSize: 9,
+                              letterSpacing: 1.5,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   // Base do joystick
                   if (_joystickOrigin != null)
@@ -181,10 +184,11 @@ class _HudOverlayState extends State<HudOverlay> {
                         height: _baseRadius * 2,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.white.withOpacity(0.07),
+                          color: Colors.white.withValues(alpha: 0.07),
                           border: Border.all(
-                              color: Colors.white.withOpacity(0.22),
-                              width: 1.5),
+                            color: Colors.white.withValues(alpha: 0.22),
+                            width: 1.5,
+                          ),
                         ),
                       ),
                     ),
@@ -199,11 +203,12 @@ class _HudOverlayState extends State<HudOverlay> {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color:
-                              const Color(0xFF00E5FF).withOpacity(0.38),
+                              const Color(0xFF00E5FF).withValues(alpha: 0.38),
                           border: Border.all(
-                              color:
-                                  const Color(0xFF00E5FF).withOpacity(0.80),
-                              width: 2),
+                            color:
+                                const Color(0xFF00E5FF).withValues(alpha: 0.80),
+                            width: 2,
+                          ),
                         ),
                       ),
                     ),
@@ -226,43 +231,49 @@ class _HudOverlayState extends State<HudOverlay> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: isBoosting
-                        ? const Color(0xFF00E5FF).withOpacity(0.30)
-                        : Colors.white.withOpacity(0.08),
+                        ? const Color(0xFF00E5FF).withValues(alpha: 0.30)
+                        : Colors.white.withValues(alpha: 0.08),
                     border: Border.all(
                       color: isBoosting
                           ? const Color(0xFF00E5FF)
-                          : Colors.white.withOpacity(0.30),
+                          : Colors.white.withValues(alpha: 0.30),
                       width: isBoosting ? 2.5 : 1.5,
                     ),
                     boxShadow: isBoosting
                         ? [
                             BoxShadow(
-                                color: const Color(0xFF00E5FF)
-                                    .withOpacity(0.4),
-                                blurRadius: 16,
-                                spreadRadius: 2)
+                              color: const Color(0xFF00E5FF)
+                                  .withValues(alpha: 0.4),
+                              blurRadius: 16,
+                              spreadRadius: 2,
+                            )
                           ]
                         : [],
                   ),
                   child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.flash_on_rounded,
-                            color: isBoosting
-                                ? const Color(0xFF00E5FF)
-                                : Colors.white.withOpacity(0.5),
-                            size: 28),
-                        Text('BOOST',
-                            style: TextStyle(
-                              color: isBoosting
-                                  ? const Color(0xFF00E5FF)
-                                  : Colors.white.withOpacity(0.4),
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
-                              decoration: TextDecoration.none,
-                            )),
-                      ]),
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.flash_on_rounded,
+                        color: isBoosting
+                            ? const Color(0xFF00E5FF)
+                            : Colors.white.withValues(alpha: 0.5),
+                        size: 28,
+                      ),
+                      Text(
+                        'BOOST',
+                        style: TextStyle(
+                          color: isBoosting
+                              ? const Color(0xFF00E5FF)
+                              : Colors.white.withValues(alpha: 0.4),
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -283,14 +294,14 @@ class _HudOverlayState extends State<HudOverlay> {
                   height: 36,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(18),
-                    color: Colors.white.withOpacity(0.08),
+                    color: Colors.white.withValues(alpha: 0.08),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.30),
+                      color: Colors.white.withValues(alpha: 0.30),
                       width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -300,7 +311,7 @@ class _HudOverlayState extends State<HudOverlay> {
                     child: Text(
                       'PAUSE',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.75),
+                        color: Colors.white.withValues(alpha: 0.75),
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 2,
@@ -319,37 +330,43 @@ class _HudOverlayState extends State<HudOverlay> {
               right: 0,
               child: SafeArea(
                 bottom: false,
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const SizedBox(height: 6),
-                  Text('$score',
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 6),
+                    Text(
+                      '$score',
                       style: TextStyle(
                         fontSize: 42,
                         fontWeight: FontWeight.w900,
                         height: 1.0,
                         letterSpacing: 2,
-                        color: isRecord
-                            ? const Color(0xFFFFD600)
-                            : Colors.white,
+                        color:
+                            isRecord ? const Color(0xFFFFD600) : Colors.white,
                         decoration: TextDecoration.none,
                         shadows: [
                           Shadow(
                             color: isRecord
-                                ? const Color(0xFFFFD600).withOpacity(0.6)
-                                : Colors.black.withOpacity(0.5),
+                                ? const Color(0xFFFFD600).withValues(alpha: 0.6)
+                                : Colors.black.withValues(alpha: 0.5),
                             blurRadius: 8,
-                          )
+                          ),
                         ],
-                      )),
-                  if (isRecord)
-                    const Text('● RECORDE',
+                      ),
+                    ),
+                    if (isRecord)
+                      const Text(
+                        '● RECORDE',
                         style: TextStyle(
                           color: Color(0xFFFFD600),
                           fontSize: 9,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 3,
                           decoration: TextDecoration.none,
-                        )),
-                ]),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
 
@@ -364,41 +381,54 @@ class _HudOverlayState extends State<HudOverlay> {
                   child: _HudCard(children: [
                     Row(mainAxisSize: MainAxisSize.min, children: [
                       _HudStat(
-                          icon: Icons.local_fire_department_rounded,
-                          iconColor: const Color(0xFFFF5252),
-                          label: 'KILLS',
-                          value: '$kills',
-                          valueColor: const Color(0xFFFF5252)),
+                        icon: Icons.local_fire_department_rounded,
+                        iconColor: const Color(0xFFFF5252),
+                        label: 'KILLS',
+                        value: '$kills',
+                        valueColor: const Color(0xFFFF5252),
+                      ),
                       const SizedBox(width: 12),
                       _HudStat(
-                          icon: Icons.linear_scale_rounded,
-                          iconColor: const Color(0xFF69F0AE),
-                          label: 'TAMANHO',
-                          value: '$length',
-                          valueColor: const Color(0xFF69F0AE)),
+                        icon: Icons.linear_scale_rounded,
+                        iconColor: const Color(0xFF69F0AE),
+                        label: 'TAMANHO',
+                        value: '$length',
+                        valueColor: const Color(0xFF69F0AE),
+                      ),
                       const SizedBox(width: 12),
                       _HudStat(
-                          icon: Icons.emoji_events_rounded,
-                          iconColor: const Color(0xFFFFD700),
-                          label: 'RECORDE',
-                          value: '$hs',
-                          valueColor: const Color(0xFFFFD700)),
+                        icon: Icons.emoji_events_rounded,
+                        iconColor: const Color(0xFFFFD700),
+                        label: 'RECORDE',
+                        value: '$hs',
+                        valueColor: const Color(0xFFFFD700),
+                      ),
                     ]),
                     const SizedBox(height: 6),
                     Row(mainAxisSize: MainAxisSize.min, children: [
                       _HudStat(
-                          icon: Icons.monetization_on_rounded,
-                          iconColor: const Color(0xFFFFD600),
-                          label: 'MOEDAS',
-                          value: '$coins',
-                          valueColor: const Color(0xFFFFD600)),
+                        icon: Icons.monetization_on_rounded,
+                        iconColor: const Color(0xFFFFD600),
+                        label: 'MOEDAS',
+                        value: '$coins',
+                        valueColor: const Color(0xFFFFD600),
+                      ),
                       const SizedBox(width: 12),
                       _HudStat(
-                          icon: Icons.diamond_rounded,
-                          iconColor: const Color(0xFF00E5FF),
-                          label: 'DIAMANTES',
-                          value: '$diamonds',
-                          valueColor: const Color(0xFF00E5FF)),
+                        icon: Icons.diamond_rounded,
+                        iconColor: const Color(0xFF00E5FF),
+                        label: 'DIAMANTES',
+                        value: '$diamonds',
+                        valueColor: const Color(0xFF00E5FF),
+                      ),
+                      const SizedBox(width: 12),
+                      _HudStat(
+                        icon: Icons.favorite_rounded,
+                        iconColor: const Color(0xFF2ECC71),
+                        label: 'VIDAS',
+                        value: '$revives',
+                        valueColor: const Color(0xFF2ECC71),
+                      ),
                     ]),
                   ]),
                 ),
@@ -421,9 +451,10 @@ class _HudCard extends StatelessWidget {
           color: Colors.transparent,
         ),
         child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: children),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: children,
+        ),
       );
 }
 
@@ -447,24 +478,28 @@ class _HudStat extends StatelessWidget {
           Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, color: iconColor, size: 10),
             const SizedBox(width: 3),
-            Text(label,
-                style: const TextStyle(
-                  color: Color(0xFF546E7A),
-                  fontSize: 8,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                  decoration: TextDecoration.none,
-                )),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF546E7A),
+                fontSize: 8,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                decoration: TextDecoration.none,
+              ),
+            ),
           ]),
           const SizedBox(height: 1),
-          Text(value,
-              style: TextStyle(
-                color: valueColor,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                height: 1.0,
-                decoration: TextDecoration.none,
-              )),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              height: 1.0,
+              decoration: TextDecoration.none,
+            ),
+          ),
         ],
       );
 }

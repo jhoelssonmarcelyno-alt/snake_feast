@@ -33,15 +33,15 @@ class _GlowIconButtonState extends State<GlowIconButton> {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             // Fundo sólido para ser visível no fundo verde
-            color: const Color(0xFF29CFFF).withOpacity(0.9),
+            color: const Color(0xFF29CFFF).withValues(alpha: 0.9),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF29CFFF).withOpacity(0.5),
+                color: const Color(0xFF29CFFF).withValues(alpha: 0.5),
                 blurRadius: 12,
                 spreadRadius: 2,
               ),
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 6,
                 offset: const Offset(0, 3),
               ),

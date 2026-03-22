@@ -23,11 +23,11 @@ class Tip extends StatelessWidget {
         height: 44 * scale,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: color.withOpacity(0.15),
-          border: Border.all(color: color.withOpacity(0.6), width: 2),
+          color: color.withValues(alpha: 0.15),
+          border: Border.all(color: color.withValues(alpha: 0.6), width: 2),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.3),
+              color: color.withValues(alpha: 0.3),
               blurRadius: 8,
               spreadRadius: 1,
             ),
@@ -45,14 +45,14 @@ class Tip extends StatelessWidget {
       Text(label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.85),
+            color: Colors.white.withValues(alpha: 0.85),
             fontSize: 9 * scale,
             height: 1.3,
             fontWeight: FontWeight.w600,
             decoration: TextDecoration.none,
             shadows: [
               Shadow(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   blurRadius: 4)
             ],
           )),
@@ -65,5 +65,5 @@ class TipDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Container(width: 1, height: 36, color: Colors.white.withOpacity(0.12));
+      Container(width: 1, height: 36, color: Colors.white.withValues(alpha: 0.12));
 }

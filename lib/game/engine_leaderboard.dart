@@ -46,7 +46,7 @@ extension EngineLeaderboard on SnakeEngine {
           : '${i + 1}. ${e['name']}  ...';
       final color = alive
           ? e['color'] as Color
-          : (e['color'] as Color).withOpacity(0.35);
+          : (e['color'] as Color).withValues(alpha: 0.35);
       lbEntryPainters.add(makeTextPainter(label, 10, color, bold: ip));
     }
   }

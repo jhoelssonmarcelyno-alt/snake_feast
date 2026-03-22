@@ -10,13 +10,40 @@ dependencies:
   flutter:
     sdk: flutter
   flame: ^1.17.0
+  flame_audio: ^2.1.1
   shared_preferences: ^2.5.4
   vibration: ^3.1.8
-
+  permission_handler: ^11.3.1   # ← ADICIONADO para solicitar permissões BT
+  device_info_plus: ^10.1.0
+  web_socket_channel: 3.0.3
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
-
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.0
+  
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/audio/menu_music.mp3
+    - assets/audio/game_music.mp3
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#2ECC40"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+
+flutter_native_splash:
+  color: "#27AE35"
+  image: assets/splash/splash_screen.png
+  android: true
+  ios: true
+  android_12:
+    color: "#27AE35"
+    image: assets/splash/splash_screen.png
+    icon_background_color: "#27AE35"

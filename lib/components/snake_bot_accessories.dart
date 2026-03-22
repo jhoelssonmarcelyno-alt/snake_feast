@@ -1,6 +1,6 @@
 // lib/components/snake_bot_accessories.dart
 // Mixins com os acessórios visuais de cada personalidade de bot.
-import 'dart:math' show pi, cos, sin;
+import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart' show Colors, Color;
 
@@ -62,7 +62,7 @@ mixin BotAccessoryRenderer {
         mask);
     _drawStar(canvas, Offset(h.dx + r * 0.2, h.dy), r * 0.18,
         Paint()..color = const Color(0xFFFFD600));
-    final cape = Paint()..color = const Color(0xFFFF1744).withOpacity(0.8);
+    final cape = Paint()..color = const Color(0xFFFF1744).withValues(alpha: 0.8);
     canvas.drawPath(
         Path()
           ..moveTo(h.dx - r * 0.8, h.dy - r * 0.4)
@@ -188,7 +188,7 @@ mixin BotAccessoryRenderer {
             center: Offset(h.dx + r * 0.0, h.dy - r * 0.22),
             width: r * 0.55,
             height: r * 0.35),
-        Paint()..color = const Color(0xFF00E5FF).withOpacity(0.8));
+        Paint()..color = const Color(0xFF00E5FF).withValues(alpha: 0.8));
     final ant = Paint()
       ..color = const Color(0xFF76FF03)
       ..strokeWidth = r * 0.1
@@ -207,7 +207,7 @@ mixin BotAccessoryRenderer {
   // ── FANTASMA ──────────────────────────────────────────────────
   void _accGhost(Canvas canvas, Offset h, double r) {
     final halo = Paint()
-      ..color = const Color(0xFFFFD600).withOpacity(0.9)
+      ..color = const Color(0xFFFFD600).withValues(alpha: 0.9)
       ..style = PaintingStyle.stroke
       ..strokeWidth = r * 0.2;
     final float = sin(accTimer * 3) * r * 0.1;
@@ -217,7 +217,7 @@ mixin BotAccessoryRenderer {
             width: r * 1.4,
             height: r * 0.45),
         halo);
-    final ghost = Paint()..color = Colors.white.withOpacity(0.3);
+    final ghost = Paint()..color = Colors.white.withValues(alpha: 0.3);
     canvas.drawPath(
         Path()
           ..moveTo(h.dx - r * 0.7, h.dy + r * 0.5)
@@ -255,13 +255,13 @@ mixin BotAccessoryRenderer {
                 width: r * 0.9,
                 height: r * 0.5),
             const Radius.circular(3)),
-        Paint()..color = Colors.black.withOpacity(0.7));
+        Paint()..color = Colors.black.withValues(alpha: 0.7));
     canvas.drawRect(
         Rect.fromCenter(
             center: Offset(h.dx + r * 0.2, h.dy),
             width: r * 0.6,
             height: r * 0.15),
-        led..color = led.color.withOpacity(blink ? 1.0 : 0.4));
+        led..color = led.color.withValues(alpha: blink ? 1.0 : 0.4));
   }
 
   // ── VIKING ────────────────────────────────────────────────────
@@ -349,7 +349,7 @@ mixin BotAccessoryRenderer {
 
   // ── VAMPIRO ───────────────────────────────────────────────────
   void _accVampire(Canvas canvas, Offset h, double r) {
-    final cape = Paint()..color = const Color(0xFF1A1A2E).withOpacity(0.9);
+    final cape = Paint()..color = const Color(0xFF1A1A2E).withValues(alpha: 0.9);
     final red = Paint()..color = const Color(0xFFB71C1C);
     canvas.drawPath(
         Path()

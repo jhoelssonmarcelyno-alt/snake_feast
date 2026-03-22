@@ -1,8 +1,8 @@
 // lib/game/engine_collision.dart
-import 'package:flame/components.dart';
 import '../components/snake_bot.dart';
-import '../utils/constants.dart';
 import 'snake_engine.dart';
+import '../utils/constants.dart';
+import 'package:flame/components.dart';
 
 extension EngineCollision on SnakeEngine {
   void checkCollisions() {

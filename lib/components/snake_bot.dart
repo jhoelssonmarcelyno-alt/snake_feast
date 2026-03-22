@@ -1,42 +1,53 @@
 // lib/components/snake_bot.dart
 import 'dart:math';
 import 'dart:ui';
-import 'package:flame/components.dart';
 import 'package:flutter/material.dart'
     show Colors, Color, TextPainter, TextSpan, TextStyle, TextDirection, Shadow;
 import '../game/snake_engine.dart';
 import '../game/engine_food.dart';
 import '../services/haptic_service.dart';
-import '../utils/constants.dart';
 import 'food.dart';
 import 'death_particle.dart';
 import 'snake_bot_ai.dart';
 import 'snake_bot_accessories.dart';
 import 'snake_bot_renderer.dart';
+import '../utils/constants.dart';
+import 'package:flame/components.dart';
 
 typedef BotPersonality = BotPersonalityType;
 
 class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
-  @override final SnakeEngine engine;
+  @override
+  final SnakeEngine engine;
   final int botId;
   final String name;
-  @override final Color bodyColor;
-  @override final Color bodyColorDark;
+  @override
+  final Color bodyColor;
+  @override
+  final Color bodyColorDark;
   final BotPersonality personality;
 
-  @override final List<Vector2> segments = [];
+  @override
+  final List<Vector2> segments = [];
 
   // ── BotAI ────────────────────────────────────────────────
   Vector2 _botDirection = Vector2(1, 0);
   Vector2 _botTargetDirection = Vector2(1, 0);
   double _botWanderTimer = 0.0;
-  @override Vector2 get botDirection => _botDirection;
-  @override set botDirection(Vector2 v) => _botDirection = v;
-  @override Vector2 get botTargetDirection => _botTargetDirection;
-  @override set botTargetDirection(Vector2 v) => _botTargetDirection = v;
-  @override double get botWanderTimer => _botWanderTimer;
-  @override set botWanderTimer(double v) => _botWanderTimer = v;
-  @override final Random rng = Random();
+  @override
+  Vector2 get botDirection => _botDirection;
+  @override
+  set botDirection(Vector2 v) => _botDirection = v;
+  @override
+  Vector2 get botTargetDirection => _botTargetDirection;
+  @override
+  set botTargetDirection(Vector2 v) => _botTargetDirection = v;
+  @override
+  double get botWanderTimer => _botWanderTimer;
+  @override
+  set botWanderTimer(double v) => _botWanderTimer = v;
+  @override
+  final Random rng = Random();
 
   // ── Estado ───────────────────────────────────────────────
   bool _isBoosting = false;
@@ -44,29 +55,45 @@ class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
   double _boostDrainAccum = 0.0;
   bool isAlive = false;
   int score = 0;
-  double _accTimerInternal = 0.0;
-  @override double get accTimer => _accTimerInternal;
-  @override bool get isBoosting => _isBoosting;
 
-  // ── Paints — nomes PÚBLICOS para cruzar arquivos ──────────
-  final Paint _botBodyPaintField      = Paint();
-  final Paint _botShadowPaintField    = Paint()..color = const Color(0x28000000);
-  final Paint _botHighlightPaintField = Paint()..color = const Color(0x55FFFFFF);
-  final Paint _botEyeWhiteField       = Paint()..color = Colors.white;
-  final Paint _botEyePupilField       = Paint()..color = Colors.black;
-  final Paint _botBoostGlowPaintField = Paint()..color = const Color(0x40FFFFFF);
+  // ✅ Acumula pontos antes de crescer — igual ao player (1 seg a cada 10 pts)
+  int _growAccum = 0;
+
+  double _accTimerInternal = 0.0;
+  @override
+  double get accTimer => _accTimerInternal;
+  @override
+  bool get isBoosting => _isBoosting;
+
+  // ── Paints ───────────────────────────────────────────────
+  final Paint _botBodyPaintField = Paint();
+  final Paint _botShadowPaintField = Paint()..color = const Color(0x28000000);
+  final Paint _botHighlightPaintField = Paint()
+    ..color = const Color(0x55FFFFFF);
+  final Paint _botEyeWhiteField = Paint()..color = Colors.white;
+  final Paint _botEyePupilField = Paint()..color = Colors.black;
+  final Paint _botBoostGlowPaintField = Paint()
+    ..color = const Color(0x40FFFFFF);
   late Paint _botHeadPaintField;
 
-  @override Paint get botBodyPaint      => _botBodyPaintField;
-  @override Paint get botShadowPaint    => _botShadowPaintField;
-  @override Paint get botHighlightPaint => _botHighlightPaintField;
-  @override Paint get botEyeWhite       => _botEyeWhiteField;
-  @override Paint get botEyePupil       => _botEyePupilField;
-  @override Paint get botBoostGlowPaint => _botBoostGlowPaintField;
-  @override Paint get botHeadPaint      => _botHeadPaintField;
+  @override
+  Paint get botBodyPaint => _botBodyPaintField;
+  @override
+  Paint get botShadowPaint => _botShadowPaintField;
+  @override
+  Paint get botHighlightPaint => _botHighlightPaintField;
+  @override
+  Paint get botEyeWhite => _botEyeWhiteField;
+  @override
+  Paint get botEyePupil => _botEyePupilField;
+  @override
+  Paint get botBoostGlowPaint => _botBoostGlowPaintField;
+  @override
+  Paint get botHeadPaint => _botHeadPaintField;
 
   late TextPainter _namePainterField;
-  @override TextPainter get namePainter => _namePainterField;
+  @override
+  TextPainter get namePainter => _namePainterField;
 
   SnakeBot({
     required this.botId,
@@ -103,6 +130,7 @@ class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
   void respawn() {
     segments.clear();
     score = 0;
+    _growAccum = 0; // ✅ reseta acumulador
     _isBoosting = false;
     _boostTimer = 0;
     _boostDrainAccum = 0;
@@ -114,8 +142,10 @@ class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
     const double minDist = 800.0;
     do {
       spawnPos = Vector2(
-        kWorldMargin + rng.nextDouble() * (engine.worldSize.x - kWorldMargin * 2),
-        kWorldMargin + rng.nextDouble() * (engine.worldSize.y - kWorldMargin * 2),
+        kWorldMargin +
+            rng.nextDouble() * (engine.worldSize.x - kWorldMargin * 2),
+        kWorldMargin +
+            rng.nextDouble() * (engine.worldSize.y - kWorldMargin * 2),
       );
       attempts++;
     } while (attempts < 20 &&
@@ -146,8 +176,9 @@ class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
   void _updateBoost(double dt) {
     if (_isBoosting) {
       _boostTimer -= dt;
-      if (_boostTimer <= 0 || segments.length <= kPlayerMinSegments)
+      if (_boostTimer <= 0 || segments.length <= kPlayerMinSegments) {
         _isBoosting = false;
+      }
     } else {
       if (segments.length > kPlayerMinSegments + 5 &&
           rng.nextDouble() < kBotBoostChance) {
@@ -200,9 +231,14 @@ class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
     }
   }
 
+  // ✅ Mesmo ritmo do player: 1 segmento a cada 10 pontos
   void grow(int amount) {
     score += amount;
-    for (int i = 0; i < amount; i++) segments.add(segments.last.clone());
+    _growAccum += amount;
+    while (_growAccum >= 10) {
+      _growAccum -= 10;
+      segments.add(segments.last.clone());
+    }
   }
 
   void die({bool killedByPlayer = false}) {
@@ -221,7 +257,8 @@ class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
 
   Vector2 get headPosition =>
       segments.isEmpty ? Vector2.zero() : segments.first;
-  @override double get headRadius =>
+  @override
+  double get headRadius =>
       kBotHeadRadius + (segments.length * 0.02).clamp(0.0, 5.0);
   int get length => segments.length;
 
