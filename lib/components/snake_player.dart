@@ -1,6 +1,6 @@
-// lib/components/snake_player.dart
 import 'dart:ui';
 import 'package:flame/events.dart';
+import 'package:flutter/foundation.dart'; // NECESSÁRIO PARA VALUENOTIFIER
 import 'package:flutter/material.dart'
     show
         Colors,
@@ -82,8 +82,17 @@ class SnakePlayer extends Component
   double _tongueTimer = 0.0;
   bool _isAlive = true;
 
-  int score = 0;
-  int kills = 0;
+  // CORREÇÃO PARA O HUD: Usando ValueNotifier
+  final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> killsNotifier = ValueNotifier<int>(0);
+
+  // Getters e Setters para não quebrar as funções existentes
+  int get score => scoreNotifier.value;
+  set score(int value) => scoreNotifier.value = value;
+
+  int get kills => killsNotifier.value;
+  set kills(int value) => killsNotifier.value = value;
+
   int foodEaten = 0;
   int _coinsEarned = 0;
   int _diamondsEarned = 0;
@@ -156,7 +165,7 @@ class SnakePlayer extends Component
   void _spawnAt(Vector2 pos) {
     _segments.clear();
     _direction = _targetDirection = Vector2(1, 0);
-    score = kills = foodEaten = 0;
+    score = kills = foodEaten = 0; // Isso atualiza os Notifiers automaticamente
     _coinsEarned = 0;
     _diamondsEarned = 0;
     _growAccum = 0;

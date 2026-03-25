@@ -92,19 +92,24 @@ class _OnlineLobbyOverlayState extends State<OnlineLobbyOverlay>
     }
   }
 
-  Future<void> _matchmaking() async {
+  Future<void> _joinMatchmaking() async {
     setState(() {
       _loading = true;
-      _status = 'Procurando sala...';
+      _status = 'Buscando partida...';
     });
+
     final name = ScoreService.instance.playerName;
-    final skinId = ScoreService.instance.selectedSkinId;
+    // ✅ Corrigido: usando .selectedSkin.id do novo ScoreService
+    final skinId = ScoreService.instance.selectedSkin.id;
+
     final ok = await _online.joinMatchmaking(name, skinId);
-    if (!ok && mounted)
+
+    if (!ok && mounted) {
       setState(() {
         _loading = false;
         _status = 'Sem conexão com o servidor.';
       });
+    }
   }
 
   Future<void> _createRoom() async {
@@ -112,33 +117,47 @@ class _OnlineLobbyOverlayState extends State<OnlineLobbyOverlay>
       _loading = true;
       _status = 'Criando sala...';
     });
+
     final name = ScoreService.instance.playerName;
-    final skinId = ScoreService.instance.selectedSkinId;
+    // ✅ Corrigido: usando .selectedSkin.id do novo ScoreService
+    final skinId = ScoreService.instance.selectedSkin.id;
+
     final ok = await _online.createRoom(name, skinId);
-    if (!ok && mounted)
+
+    if (!ok && mounted) {
       setState(() {
         _loading = false;
         _status = 'Sem conexão com o servidor.';
       });
+    }
   }
 
   Future<void> _joinWithCode() async {
     final code = _codeCtrl.text.trim().toUpperCase();
-    if (code.length != 6)
+
+    // ✅ Validação de código com chaves e lógica corrigida
+    if (code.length != 6) {
       setState(() => _status = 'Código deve ter 6 caracteres.');
-      return;
+      return; // Agora o return está dentro do if, permitindo que o código abaixo execute
+    }
+
     setState(() {
       _loading = true;
       _status = 'Entrando na sala...';
     });
+
     final name = ScoreService.instance.playerName;
-    final skinId = ScoreService.instance.selectedSkinId;
+    // ✅ Corrigido: usando .selectedSkin.id para o Jhoelsson Studio
+    final skinId = ScoreService.instance.selectedSkin.id;
+
     final ok = await _online.joinRoom(code, name, skinId);
-    if (!ok && mounted)
+
+    if (!ok && mounted) {
       setState(() {
         _loading = false;
         _status = 'Sem conexão com o servidor.';
       });
+    }
   }
 
   void _leave() {
@@ -220,7 +239,8 @@ class _OnlineLobbyOverlayState extends State<OnlineLobbyOverlay>
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
       decoration: BoxDecoration(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border(bottom: BorderSide(color: _cyan.withValues(alpha: 0.12))),
+        border:
+            Border(bottom: BorderSide(color: _cyan.withValues(alpha: 0.12))),
       ),
       child: Row(children: [
         Container(
@@ -253,7 +273,8 @@ class _OnlineLobbyOverlayState extends State<OnlineLobbyOverlay>
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-                shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.05)),
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.05)),
             child: Icon(
                 _screen == _Screen.main
                     ? Icons.close_rounded
@@ -305,7 +326,8 @@ class _OnlineLobbyOverlayState extends State<OnlineLobbyOverlay>
           height: 72,
           decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: _cyan.withValues(alpha: 0.3), width: 2)),
+              border:
+                  Border.all(color: _cyan.withValues(alpha: 0.3), width: 2)),
           child: const Icon(Icons.public_rounded, color: _cyan, size: 36),
         ),
         const SizedBox(height: 12),
@@ -318,11 +340,13 @@ class _OnlineLobbyOverlayState extends State<OnlineLobbyOverlay>
                 decoration: TextDecoration.none)),
         const SizedBox(height: 24),
         _OnlineButton(
-            icon: Icons.shuffle_rounded,
-            label: 'PARTIDA RÁPIDA',
-            subtitle: 'Entra numa sala aleatória',
-            color: _cyan,
-            onTap: _matchmaking),
+          icon: Icons.shuffle_rounded,
+          label: 'PARTIDA RÁPIDA',
+          subtitle: 'Entra numa sala aleatória',
+          color: _cyan,
+          onTap:
+              _joinMatchmaking, // ✅ Corrigido para o nome da função que existe
+        ),
         const SizedBox(height: 10),
         _OnlineButton(
             icon: Icons.add_circle_outline_rounded,
@@ -581,8 +605,9 @@ class _PlayerTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        color:
-            isLocal ? cyan.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.03),
+        color: isLocal
+            ? cyan.withValues(alpha: 0.08)
+            : Colors.white.withValues(alpha: 0.03),
         border: Border.all(
             color: isLocal
                 ? cyan.withValues(alpha: 0.3)

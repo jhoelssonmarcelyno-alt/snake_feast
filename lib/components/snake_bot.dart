@@ -7,7 +7,6 @@ import 'package:flutter/material.dart'
 import '../game/snake_engine.dart';
 import '../services/haptic_service.dart';
 import 'food.dart';
-// Removido import não utilizado de death_particle
 import 'snake_bot_ai.dart';
 import 'snake_bot_accessories.dart' hide BotPersonalityType;
 import 'snake_bot_renderer.dart';
@@ -24,11 +23,14 @@ class SnakeBot extends Component
         BotAI,
         BotAccessoryRenderer,
         BotRenderer {
+  @override
   final SnakeEngine engine;
   final int botId;
   final String name;
 
+  @override
   final Color bodyColor;
+  @override
   final Color bodyColorDark;
 
   final BotPersonalityType personality;
@@ -36,6 +38,7 @@ class SnakeBot extends Component
   Vector2 botDirection = Vector2(1, 0);
   Vector2 botTargetDirection = Vector2(1, 0);
   double botWanderTimer = 0.0;
+  @override
   double accTimer = 0.0;
   final Random rng = Random();
 
@@ -62,6 +65,7 @@ class SnakeBot extends Component
     respawn();
   }
 
+  /// ✅ Reconstrói o pintor de texto sempre que o nível muda
   void _buildNamePainter() {
     _namePainter = TextPainter(
       text: TextSpan(
@@ -70,7 +74,10 @@ class SnakeBot extends Component
           color: bodyColor,
           fontSize: 11,
           fontWeight: FontWeight.bold,
-          shadows: const [Shadow(color: Color(0xFF000000), blurRadius: 4)],
+          shadows: const [
+            Shadow(
+                color: Color(0xFF000000), blurRadius: 4, offset: Offset(1, 1))
+          ],
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -80,6 +87,9 @@ class SnakeBot extends Component
   void respawn() {
     resetState();
     segments.clear();
+    level = 1; // Reinicia o nível ao nascer
+    _buildNamePainter();
+
     Vector2 spawnPos = _generateValidSpawnPos();
     final double angle = rng.nextDouble() * pi * 2;
     botDirection = botTargetDirection = Vector2(cos(angle), sin(angle));
@@ -131,6 +141,7 @@ class SnakeBot extends Component
       if (boostDrainAccum >= 1.0) {
         boostDrainAccum -= 1.0;
         segments.removeLast();
+        _updateLevel(); // ✅ Atualiza nível se diminuir de tamanho
       }
     }
   }
@@ -140,12 +151,9 @@ class SnakeBot extends Component
     final head = segments.first;
     final double er = headRadius + kEatRadius;
 
-    // ✅ CORREÇÃO: Removendo da lista de forma segura
     for (int i = engine.foods.length - 1; i >= 0; i--) {
       final food = engine.foods[i];
       if (food.position.distanceTo(head) < er) {
-        // Se sua classe Food não for um Component, você não chama removeFromParent
-        // Você apenas remove da lista do motor
         engine.foods.removeAt(i);
         grow(food.value);
       }
@@ -181,9 +189,20 @@ class SnakeBot extends Component
   void grow(int amount) {
     score += amount;
     growAccum += amount;
-    while (growAccum >= 10) {
-      growAccum -= 10;
+    while (growAccum >= kGrowThreshold) {
+      growAccum -= kGrowThreshold;
       segments.add(segments.last.clone());
+    }
+    _updateLevel(); // ✅ Verifica se subiu de nível após comer
+  }
+
+  /// ✅ Calcula o nível baseado no tamanho e reconstrói o texto se mudar
+  void _updateLevel() {
+    // Exemplo: Nível sobe a cada 5 segmentos adicionais
+    int newLevel = (segments.length / 5).floor() + 1;
+    if (newLevel != level) {
+      level = newLevel;
+      _buildNamePainter();
     }
   }
 
@@ -191,7 +210,6 @@ class SnakeBot extends Component
     if (!isAlive) return;
     isAlive = false;
 
-    // ✅ CORREÇÃO: Adicionando massa sem erro de tipo
     for (var i = 0; i < segments.length; i += 2) {
       engine.foods.add(Food.snakeMass(
           position: segments[i].clone(), segmentColor: bodyColor));

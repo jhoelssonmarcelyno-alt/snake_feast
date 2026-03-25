@@ -13,7 +13,7 @@ import 'overlays/revive_overlay.dart';
 import 'overlays/shop_overlay.dart';
 import 'overlays/lobby_overlay.dart';
 import 'overlays/ranking_overlay.dart';
-import 'overlays/win_overlay.dart'; // ✅ Certifique-se de que este arquivo existe
+import 'game/engine_win.dart'; // ✅ Certifique-se de que este arquivo existe
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

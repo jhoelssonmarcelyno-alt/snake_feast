@@ -1,8 +1,8 @@
 // lib/ui/main_menu/main_menu.dart
-// Orquestra o menu principal — apenas layout, sem lógica inline
 import 'package:flutter/material.dart';
 import '../../game/snake_engine.dart';
 import '../../services/score_service.dart';
+import '../../services/rank_system.dart';
 import '../../utils/constants.dart';
 import 'models/particle.dart';
 import 'painters/particle_painter.dart';
@@ -15,6 +15,7 @@ import 'widgets/tips_column.dart';
 import 'widgets/glow_icon_button.dart';
 import 'widgets/wallet_badge.dart';
 import '../../overlays/lobby_overlay.dart';
+import '../../overlays/rank_overlay.dart';
 import 'dart:math';
 
 class MainMenuOverlay extends StatefulWidget {
@@ -40,6 +41,7 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
   // ── Estado ────────────────────────────────────────────────
   int _selectedSkin = 0;
   bool _isOnline = false;
+  bool _showRank = false;
   late final TextEditingController _nameController;
 
   @override
@@ -114,16 +116,18 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
       : widget.engine.restartGame();
   void _onMulti() {
     setState(() => _isOnline = !_isOnline);
-    if (_isOnline) {
-      widget.engine.overlays.add(kOverlayLobby);
-    }
+    if (_isOnline) widget.engine.overlays.add(kOverlayLobby);
   }
+
   void _onShop() => widget.engine.overlays.add(kOverlayShop);
   void _onSettings() => widget.engine.overlays.add(kOverlaySettings);
   void _onName(String v) {
     ScoreService.instance.savePlayerName(v);
     widget.engine.player.name = v.trim().isEmpty ? 'Você' : v.trim();
   }
+
+  void _onRank() => setState(() => _showRank = true);
+  void _closeRank() => setState(() => _showRank = false);
 
   @override
   Widget build(BuildContext context) {
@@ -134,6 +138,7 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
     final hs = ScoreService.instance.highScore;
     final coins = ScoreService.instance.coins;
     final diamonds = ScoreService.instance.diamonds;
+    final rank = ScoreService.instance.currentRank;
 
     return Material(
       color: Colors.transparent,
@@ -166,40 +171,29 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
               ),
             ),
 
-            // ── Conteúdo scrollável (título + nome + skin) ───
+            // ── Conteúdo scrollável ──────────────────────────
             Positioned.fill(
               child: SafeArea(
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.only(
-                    top: 8,
-                    // Espaço embaixo para não sobrepor o botão JOGAR fixo
-                    bottom: 100 * scale,
-                  ),
+                  padding: EdgeInsets.only(top: 8, bottom: 100 * scale),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Título
                       MenuTitle(
                         scale: scale,
                         titleFade: _titleFade,
                         subtitleFade: _subtitleFade,
                         titleSlide: _titleSlide,
                       ),
-
                       SizedBox(height: 12 * scale),
-
-                      // Campo de nome
                       NameField(
                         controller: _nameController,
                         fadeAnim: _cardFade,
                         scale: scale,
                         onChanged: _onName,
                       ),
-
                       SizedBox(height: 12 * scale),
-
-                      // Seletor de skin
                       SkinSelector(
                         selectedSkin: _selectedSkin,
                         snakeCtrl: _snakeCtrl,
@@ -216,7 +210,7 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
               ),
             ),
 
-            // ── Botão JOGAR + MULTI — fixo embaixo ao centro ─
+            // ── Botão JOGAR fixo embaixo ─────────────────────
             Positioned(
               left: 0,
               right: 0,
@@ -241,7 +235,7 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
               child: TipsColumn(fadeAnim: _btnFade),
             ),
 
-            // ── Botão Online/Offline ─────────────────────────────
+            // ── Botão Online/Offline ─────────────────────────
             Positioned(
               top: 0,
               left: 0,
@@ -268,14 +262,19 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
                             width: 1.5,
                           ),
                           boxShadow: _isOnline
-                              ? [BoxShadow(
-                                  color: const Color(0xFF29CFFF).withOpacity(0.3),
-                                  blurRadius: 10)]
+                              ? [
+                                  BoxShadow(
+                                      color: const Color(0xFF29CFFF)
+                                          .withOpacity(0.3),
+                                      blurRadius: 10)
+                                ]
                               : [],
                         ),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Icon(
-                            _isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                            _isOnline
+                                ? Icons.wifi_rounded
+                                : Icons.wifi_off_rounded,
                             color: _isOnline
                                 ? const Color(0xFF29CFFF)
                                 : Colors.white.withOpacity(0.55),
@@ -329,6 +328,49 @@ class _MainMenuOverlayState extends State<MainMenuOverlay>
                 ),
               ),
             ),
+
+            // ── Badge de patente (canto inferior direito) ────
+            Positioned(
+              bottom: 20,
+              right: 12,
+              child: FadeTransition(
+                opacity: _btnFade,
+                child: GestureDetector(
+                  onTap: _onRank,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      color: rank.colorDark.withOpacity(0.7),
+                      border: Border.all(
+                          color: rank.color.withOpacity(0.7), width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                            color: rank.color.withOpacity(0.3), blurRadius: 8)
+                      ],
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(rank.icon, color: rank.color, size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        rank.name.toUpperCase(),
+                        style: TextStyle(
+                          color: rank.color,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.5,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Tabela de patentes (modal) ───────────────────
+            if (_showRank) RankOverlay(onClose: _closeRank),
           ],
         ),
       ),

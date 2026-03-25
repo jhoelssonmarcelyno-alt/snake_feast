@@ -2,10 +2,9 @@
 
 import 'dart:math';
 import 'dart:ui';
-import '../components/snake_bot_ai.dart'; // Ou onde estiver o enum
+import '../components/snake_bot_ai.dart';
 import 'package:flame/game.dart';
 import 'package:flame/events.dart';
-import '../components/snake_bot_ai.dart'; // ✅ Isso libera o BotPersonalityType para o motor
 import 'package:flame/components.dart' show Vector2;
 import 'package:flutter/material.dart'
     show
@@ -19,7 +18,6 @@ import 'package:flutter/material.dart'
         FontWeight,
         Shadow;
 
-// Componentes e Serviços
 import '../components/food.dart';
 import '../components/snake_player.dart';
 import '../components/snake_bot.dart';
@@ -27,7 +25,6 @@ import '../services/score_service.dart';
 import '../services/audio_service.dart';
 import '../services/bluetooth_service.dart';
 
-// --- EXTENSÕES DO MOTOR ---
 import 'engine_camera.dart';
 import 'engine_collision.dart';
 import 'engine_food.dart';
@@ -36,14 +33,12 @@ import 'engine_leaderboard.dart';
 import 'engine_snakes.dart';
 import 'engine_multiplayer.dart';
 import 'engine_input.dart';
-import 'engine_zone.dart'
-    hide kBattleTotalTime; // ✅ Resolve conflito de importação
+import 'engine_zone.dart' hide kBattleTotalTime;
 import 'engine_minimap.dart';
 import 'engine_win.dart';
 import 'game_sync.dart';
 import '../utils/constants.dart';
 
-// --- Structs auxiliares ---
 class RespawnTask {
   final SnakeBot bot;
   double timeRemaining;
@@ -73,6 +68,9 @@ class SnakeEngine extends FlameGame
   int _skinIndex = 0;
   int get skinIndex => _skinIndex;
 
+  // ── Tempo de vida do player na sessão atual ───────────────────
+  double sessionTime = 0.0;
+
   dynamic get leader {
     dynamic best;
     int bestLen = 0;
@@ -101,7 +99,7 @@ class SnakeEngine extends FlameGame
   bool battleEnded = false;
   String? battleWinner;
 
-  // --- Paints Globais (Necessários para as Extensões) ---
+  // --- Paints Globais ---
   final Paint bgPaint = Paint()..color = const Color(0xFF2D5A2D);
   final Paint grassDarkPaint = Paint()..color = const Color(0xFF2A5228);
   final Paint grassLightPaint = Paint()..color = const Color(0xFF4CAF50);
@@ -115,7 +113,6 @@ class SnakeEngine extends FlameGame
     ..color = const Color(0xFF4A8C3F)
     ..strokeCap = StrokeCap.round;
 
-  // Tintas das Paredes
   final Paint wallBase = Paint()..color = const Color(0xFF5D4037);
   final Paint wallBrick = Paint()..color = const Color(0xFF4E342E);
   final Paint wallHighlight = Paint()
@@ -124,7 +121,6 @@ class SnakeEngine extends FlameGame
     ..strokeWidth = 1.0;
   final Paint wallShadow = Paint()..color = const Color(0x88000000);
 
-  // Tintas do Minimapa (✅ CORREÇÃO: Define nomes usados no engine_minimap.dart)
   final Paint minimapBg = Paint()..color = const Color(0x00000000);
   final Paint minimapBorder = Paint()
     ..color = const Color(0x4400FF88)
@@ -138,7 +134,6 @@ class SnakeEngine extends FlameGame
     ..style = PaintingStyle.stroke
     ..strokeWidth = 1;
 
-  // Tintas do Leaderboard
   final Paint lbBg = Paint()..color = const Color(0x00000000);
   final Paint lbBorder = Paint()
     ..color = const Color(0x1100FF88)
@@ -148,13 +143,11 @@ class SnakeEngine extends FlameGame
   late TextPainter lbTitlePainter;
   final List<TextPainter> lbEntryPainters = [];
 
-  // --- Timers e Controles de Estado ---
   double _collisionTimer = 0.0;
   static const double _collisionInterval = 1.0 / 20.0;
   double _lbUpdateTimer = 0.0;
   static const double _lbUpdateInterval = 1.0;
 
-  // ✅ CORREÇÃO: Variável essencial para o engine_food.dart funcionar sem erros
   double attractTimer = 0.0;
 
   @override
@@ -185,11 +178,8 @@ class SnakeEngine extends FlameGame
   void _initBots() {
     for (int i = 0; i < kBotCount; i++) {
       final colors = kBotPalette[i % kBotPalette.length];
-
-      // ✅ TROQUE BotPersonality POR BotPersonalityType AQUI:
       final personality =
           BotPersonalityType.values[i % BotPersonalityType.values.length];
-
       final bot = SnakeBot(
         botId: i,
         name: kBotNames[i % kBotNames.length],
@@ -253,14 +243,22 @@ class SnakeEngine extends FlameGame
     resumeEngine();
   }
 
-  void handlePlayerDeath() {
-    // Bloqueia morte se já venceu
+  /// ✅ CORRIGIDO: Agora usa o novo sistema de recompensa completa
+  void handlePlayerDeath() async {
     if (overlays.isActive('WinOverlay') || battleEnded) return;
     if (!player.isAlive) return;
 
     player.die();
-    ScoreService.instance.submitScore(player.score);
-    ScoreService.instance.processRewards(player.foodEaten);
+
+    // ── Submete XP completo com breakdown (Novo Sistema Jhoelsson Studio) ──
+    await ScoreService.instance.submitFullReward(
+      score: player.score,
+      kills: player.kills,
+      level: player.level,
+      secondsAlive: sessionTime,
+      isVictory: false,
+    );
+
     overlays.remove(kOverlayHud);
     overlays.add(kOverlayGameOver);
     AudioService.instance.playMenuMusic();
@@ -274,12 +272,13 @@ class SnakeEngine extends FlameGame
   }
 
   void startGame() {
-    ScoreService.instance.resetRewardsFlag();
+    // ✅ CORRIGIDO: Removido resetRewardsFlag (agora automático no submit)
     revivesUsed = 0;
     battleEnded = false;
     battleWinner = null;
     zoneDamageAccum = 0.0;
     attractTimer = 0.0;
+    sessionTime = 0.0;
 
     initBattleZone();
 
@@ -320,18 +319,22 @@ class SnakeEngine extends FlameGame
     super.update(dt);
     updateCamera();
 
-    // 1. Atualiza a zona de batalha (sempre ativa o cronômetro aqui)
-    updateBattleZone(dt);
+    if (player.isAlive) sessionTime += dt;
 
-    // 2. Checagem de vitória (Vem do WinMixin)
+    updateBattleZone(dt);
     checkVictoryCondition();
 
-    // 3. Morte do jogador (Só se não venceu)
-    if (!player.isAlive && !overlays.isActive('WinOverlay')) {
+    // ── LÓGICA DE ESCASSEZ ──
+    if (battleTimer > 60) {
+      processRespawnQueue(dt);
+    }
+
+    if (!player.isAlive &&
+        !overlays.isActive('WinOverlay') &&
+        !overlays.isActive(kOverlayGameOver)) {
       handlePlayerDeath();
     }
 
-    // Colisões otimizadas
     _collisionTimer += dt;
     if (_collisionTimer >= _collisionInterval) {
       _collisionTimer = 0;
@@ -340,14 +343,12 @@ class SnakeEngine extends FlameGame
       if (isMultiplayer) checkRemoteCollisions();
     }
 
-    // Leaderboard
     _lbUpdateTimer += dt;
     if (_lbUpdateTimer >= _lbUpdateInterval) {
       _lbUpdateTimer = 0;
       rebuildLeaderboard();
     }
 
-    processRespawnQueue(dt);
     attractFoodToPlayer(dt: dt);
     if (isMultiplayer) gameSync?.cleanStaleStates();
   }
@@ -357,10 +358,7 @@ class SnakeEngine extends FlameGame
     renderWorld(canvas);
     super.render(canvas);
     if (isMultiplayer) renderRemotePlayers(canvas);
-
-    // Renderiza a zona circular se estiver ativa
     if (battleActive) renderZone(canvas);
-
     renderHud(canvas);
   }
 }

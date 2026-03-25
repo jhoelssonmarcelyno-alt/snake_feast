@@ -1,6 +1,7 @@
-// lib/services/score_service.dart
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/constants.dart';
+import 'rank_system.dart';
+import 'xp_reward.dart';
 
 class ScoreService {
   ScoreService._();
@@ -9,39 +10,62 @@ class ScoreService {
   late SharedPreferences _prefs;
   bool _ready = false;
 
+  /// Inicializa o serviço de persistência
   Future<void> init() async {
     if (_ready) return;
     _prefs = await SharedPreferences.getInstance();
     _ready = true;
   }
 
-  // ─── High Score ──────────────────────────────────────────────
+  // ─── High Score ───────────────────────────────────────────────
+
   int get highScore => _prefs.getInt(kPrefHighScore) ?? 0;
 
-  Future<bool> submitScore(int score) async {
+  /// Submete o XpReward completo de uma partida e salva o recorde
+  Future<XpReward> submitFullReward({
+    required int score,
+    required int kills,
+    required int level,
+    required double secondsAlive,
+    required bool isVictory,
+  }) async {
+    final reward = RankSystem.calculateReward(
+      score: score,
+      kills: kills,
+      level: level,
+      secondsAlive: secondsAlive,
+      isVictory: isVictory,
+      currentXP: totalXP,
+    );
+
+    await addXP(reward.total);
+
     if (score > highScore) {
       await _prefs.setInt(kPrefHighScore, score);
-      return true;
     }
-    return false;
+
+    _lastXpReward = reward;
+    return reward;
   }
 
-  // ─── Skin selecionada ─────────────────────────────────────────
-  int get selectedSkinIndex {
-    final idx = _prefs.getInt(kPrefSelectedSkin) ?? 0;
-    return idx.clamp(0, kPlayerSkins.length - 1);
+  // ─── XP e Patente ─────────────────────────────────────────────
+
+  int get totalXP => _prefs.getInt('total_xp') ?? 0;
+
+  Future<void> addXP(int amount) async {
+    if (amount <= 0) return;
+    await _prefs.setInt('total_xp', totalXP + amount);
   }
 
-  Future<void> saveSkinIndex(int index) async {
-    await _prefs.setInt(kPrefSelectedSkin, index);
-  }
+  RankInfo get currentRank => RankSystem.getRankForXP(totalXP);
+  RankInfo? get nextRank => RankSystem.getNextRank(currentRank);
+  double get rankProgress => RankSystem.rankProgress(totalXP);
 
-  SnakeSkin get selectedSkin => kPlayerSkins[selectedSkinIndex];
+  XpReward? _lastXpReward;
+  XpReward? get lastXpReward => _lastXpReward;
 
-  /// ID da skin selecionada — usado pelo modo online.
-  String get selectedSkinId => selectedSkin.id;
+  // ─── Identidade do Player ─────────────────────────────────────
 
-  // ─── Nome do player ───────────────────────────────────────────
   String get playerName {
     final n = _prefs.getString('player_name') ?? 'Você';
     return n.trim().isEmpty ? 'Você' : n;
@@ -52,54 +76,39 @@ class ScoreService {
     await _prefs.setString('player_name', clean);
   }
 
-  // ─── Moedas ───────────────────────────────────────────────────
-  // Creditadas em tempo real a cada 50 comidas pelo snake_player.
+  // ─── Economia (Moedas e Diamantes) ────────────────────────────
+
   int get coins => _prefs.getInt('coins') ?? 0;
+  int get diamonds => _prefs.getInt('diamonds') ?? 0;
 
   Future<void> addCoins(int amount) async {
     if (amount <= 0) return;
     await _prefs.setInt('coins', coins + amount);
   }
 
-  // ─── Diamantes ────────────────────────────────────────────────
-  // Creditados em tempo real a cada 5000 comidas pelo snake_player.
-  int get diamonds => _prefs.getInt('diamonds') ?? 0;
-
   Future<void> addDiamonds(int amount) async {
     if (amount <= 0) return;
     await _prefs.setInt('diamonds', diamonds + amount);
   }
 
-  // ─── processRewards — apenas para exibir resumo no Game Over ──
-  // NÃO credita mais (evita dupla contagem).
-  // As moedas/diamantes já foram creditadas em tempo real.
-  Map<String, int> _lastRewards = {'coins': 0, 'diamonds': 0};
-
-  /// Armazena o resumo de recompensas da partida para exibir no Game Over.
-  void recordSessionRewards(int foodEaten) {
-    _lastRewards = {
-      'coins':    foodEaten ~/ 50,
-      'diamonds': foodEaten ~/ 5000,
-    };
+  Future<bool> spendCoins(int amount) async {
+    if (coins < amount) return false;
+    await _prefs.setInt('coins', coins - amount);
+    return true;
   }
 
-  /// Retorna o resumo da última partida (sem creditar novamente).
-  Map<String, int> getLastRewards() => Map.from(_lastRewards);
-
-  /// Mantido por compatibilidade — não credita, só retorna resumo.
-  Future<Map<String, int>> processRewards(int foodEaten) async {
-    recordSessionRewards(foodEaten);
-    return getLastRewards();
+  Future<bool> spendDiamonds(int amount) async {
+    if (diamonds < amount) return false;
+    await _prefs.setInt('diamonds', diamonds - amount);
+    return true;
   }
 
-  void resetRewardsFlag() {
-    _lastRewards = {'coins': 0, 'diamonds': 0};
-  }
+  // ─── Boost Extra ──────────────────────────────────────────────
 
-  // ─── Boost extra (comprado na loja) ──────────────────────────
   int get extraBoosts => _prefs.getInt('extra_boosts') ?? 0;
 
   Future<void> addExtraBoosts(int amount) async {
+    if (amount <= 0) return;
     await _prefs.setInt('extra_boosts', extraBoosts + amount);
   }
 
@@ -109,10 +118,22 @@ class ScoreService {
     return true;
   }
 
-  // ─── Skin desbloqueada via loja ───────────────────────────────
-  List<String> get unlockedSkins {
-    return _prefs.getStringList('unlocked_skins') ?? ['classic'];
+  // ─── Customização (Skins e Cosméticos) ────────────────────────
+
+  int get selectedSkinIndex {
+    final idx = _prefs.getInt(kPrefSelectedSkin) ?? 0;
+    return idx.clamp(0, kPlayerSkins.length - 1);
   }
+
+  Future<void> saveSkinIndex(int index) async {
+    await _prefs.setInt(kPrefSelectedSkin, index);
+  }
+
+  /// Getter para retornar o objeto da skin selecionada (corrige erro no lobby/shop)
+  SnakeSkin get selectedSkin => kPlayerSkins[selectedSkinIndex];
+
+  List<String> get unlockedSkins =>
+      _prefs.getStringList('unlocked_skins') ?? ['classic'];
 
   Future<void> unlockSkin(String id) async {
     final list = unlockedSkins;
@@ -123,104 +144,82 @@ class ScoreService {
   }
 
   bool isSkinUnlocked(String id) {
-    // Skins comuns sempre desbloqueadas
-    const free = ['classic','verde','roxo','laranja','rosa','azul'];
+    const free = ['classic', 'verde', 'roxo', 'laranja', 'rosa', 'azul'];
     if (free.contains(id)) return true;
     return unlockedSkins.contains(id);
   }
 
-  // ─── Gastar moedas ────────────────────────────────────────────
-  Future<bool> spendCoins(int amount) async {
-    if (coins < amount) return false;
-    await _prefs.setInt('coins', coins - amount);
-    return true;
-  }
+  // ─── Itens Cosméticos (Chapéus, etc) ──────────────────────────
 
-  // ─── Gastar diamantes ─────────────────────────────────────────
-  Future<bool> spendDiamonds(int amount) async {
-    if (diamonds < amount) return false;
-    await _prefs.setInt('diamonds', diamonds - amount);
-    return true;
-  }
-
-
-  // ─── Revives comprados (persistidos) ─────────────────────────
-  int get revives => _prefs.getInt('revives') ?? 0;
-
-  Future<void> setRevives(int v) async {
-    await _prefs.setInt('revives', v);
-  }
-
-
-  // ─── Pílula de reviver com preço crescente (+2 por compra) ──
-  int get revivesBought => _prefs.getInt('revives_bought') ?? 0;
-
-  /// Preço atual da pílula = 10 + (revivesBought * 2)
-  int get revivePrice => 10 + revivesBought * 2;
-
-  Future<bool> buyRevive() async {
-    final price = revivePrice;
-    final ok = await spendCoins(price);
-    if (ok) {
-      await _prefs.setInt('revives_bought', revivesBought + 1);
-      await setRevives(revives + 1);
-    }
-    return ok;
-  }
-
-
-  // ─── Cosméticos visuais ───────────────────────────────────────
   List<String> get unlockedCosmetics =>
       _prefs.getStringList('unlocked_cosmetics') ?? [];
 
   Future<void> unlockCosmetic(String id) async {
-    final list = unlockedCosmetics;
+    final list = List<String>.from(unlockedCosmetics);
     if (!list.contains(id)) {
       list.add(id);
       await _prefs.setStringList('unlocked_cosmetics', list);
     }
   }
 
-  bool isCosmeticUnlocked(String id) =>
-      unlockedCosmetics.contains(id);
+  bool isCosmeticUnlocked(String id) => unlockedCosmetics.contains(id);
 
+  // ─── Itens Consumíveis e Revives ──────────────────────────────
 
-  // ─── Ranking local (top 10 recordes por nome) ────────────────
-  static const String _kRankingKey = 'local_ranking';
+  int get revives => _prefs.getInt('revives') ?? 0;
+  int get revivesBought => _prefs.getInt('revives_bought') ?? 0;
+
+  int get revivePrice => 10 + (revivesBought * 2);
+
+  Future<bool> buyRevive() async {
+    if (await spendCoins(revivePrice)) {
+      await _prefs.setInt('revives_bought', revivesBought + 1);
+      await _prefs.setInt('revives', revives + 1);
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> useRevive() async {
+    if (revives <= 0) return false;
+    await _prefs.setInt('revives', revives - 1);
+    return true;
+  }
+
+  // ─── Ranking Local (Top 10) ───────────────────────────────────
+
+  static const String _kRankingKey = 'local_ranking_v2';
 
   List<Map<String, dynamic>> getLocalRanking() {
-    final raw = _prefs.getString(_kRankingKey);
-    if (raw == null || raw.isEmpty) return [];
-    try {
-      final List<Map<String, dynamic>> list = [];
-      for (final e in raw.split('||')) {
-        final parts = e.split('::');
-        if (parts.length >= 2) {
-          list.add({
-            'name': parts[0],
-            'score': int.tryParse(parts[1]) ?? 0,
-          });
-        }
+    final raw = _prefs.getString(_kRankingKey) ?? '';
+    if (raw.isEmpty) return [];
+
+    final List<Map<String, dynamic>> list = [];
+    for (final entry in raw.split('||')) {
+      final parts = entry.split('::');
+      if (parts.length == 2) {
+        list.add({
+          'name': parts[0],
+          'score': int.tryParse(parts[1]) ?? 0,
+        });
       }
-      list.sort((a, b) =>
-          (b['score'] as int).compareTo(a['score'] as int));
-      return list;
-    } catch (_) {
-      return [];
     }
+    list.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+    return list;
   }
 
   Future<void> submitToLocalRanking(String name, int score) async {
     if (score <= 0) return;
-    final list = getLocalRanking();
-    list.removeWhere((e) =>
-        (e['name'] as String).toLowerCase() == name.toLowerCase());
+    var list = getLocalRanking();
+
+    list.removeWhere(
+        (e) => e['name'].toString().toLowerCase() == name.toLowerCase());
     list.add({'name': name, 'score': score});
-    list.sort((a, b) =>
-        (b['score'] as int).compareTo(a['score'] as int));
-    final top = list.take(10).toList();
-    final raw = top.map((e) => '${e["name"]}::${e["score"]}').join('||');
+
+    list.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+    final topTen = list.take(10).toList();
+
+    final raw = topTen.map((e) => '${e["name"]}::${e["score"]}').join('||');
     await _prefs.setString(_kRankingKey, raw);
   }
-
 }

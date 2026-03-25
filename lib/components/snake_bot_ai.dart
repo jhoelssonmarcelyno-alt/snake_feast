@@ -5,8 +5,9 @@ import 'package:flame/extensions.dart';
 import 'food.dart';
 import 'snake_bot.dart';
 import 'bot/bot_state.dart';
-import '../game/snake_engine.dart'; // já deve existir indiretamente
-import '../game/engine_zone.dart'; // ✅ ADICIONE ESTA LINHA
+import '../game/snake_engine.dart';
+import '../game/engine_zone.dart';
+import '../utils/constants.dart'; // necessário para kPlayerMinSegments
 
 enum BotPersonalityType { aggressive, wanderer, foodie }
 
@@ -20,7 +21,11 @@ mixin BotAI on BotState {
   static const double _visionRadius = 1400.0;
   static const double _fleeRadius = 220.0;
   static const double _wallMargin = 400.0;
-  static const double _zoneMargin = 350.0; // margem antes da borda da zona
+  static const double _zoneMargin = 350.0;
+
+  // ── Configurações de caça ──────────────────────────────────────
+  static const double _huntRadius = 600.0; // raio de detecção de presa
+  static const int _huntSizeLead = 8; // segmentos de vantagem mínima para caçar
 
   _BotState _state = _BotState.explore;
   double _stateTimer = 0;
@@ -50,6 +55,7 @@ mixin BotAI on BotState {
     if (zoneForce != null) {
       _bot.botTargetDirection =
           (_bot.botTargetDirection * 0.05 + zoneForce * 0.95).normalized();
+      _bot.isBoosting = false;
       _state = _BotState.flee;
       _stateTimer = 0;
       return;
@@ -60,6 +66,7 @@ mixin BotAI on BotState {
     if (wallForce != null) {
       _bot.botTargetDirection =
           (_bot.botTargetDirection * 0.1 + wallForce * 0.9).normalized();
+      _bot.isBoosting = false;
       _state = _BotState.flee;
       return;
     }
@@ -69,6 +76,7 @@ mixin BotAI on BotState {
     if (danger != null) {
       _bot.botTargetDirection =
           (_bot.botTargetDirection * 0.2 + danger * 0.8).normalized();
+      _bot.isBoosting = false;
       _state = _BotState.flee;
       _stateTimer = 0;
       return;
@@ -76,7 +84,24 @@ mixin BotAI on BotState {
 
     if (_state == _BotState.flee && _stateTimer < 0.25) return;
 
-    // 4. Comida — só busca comida dentro da zona segura
+    // 4. ✅ Caça — prioridade sobre comida se houver presa próxima
+    if (_bot.length > 25) {
+      final preyPos = _findPrey(head);
+      if (preyPos != null) {
+        final toPrey = (preyPos - head).normalized();
+        _bot.botTargetDirection =
+            (_bot.botTargetDirection * 0.15 + toPrey * 0.85).normalized();
+        // Boost apenas se tiver segmentos suficientes para não morrer de fome
+        _bot.isBoosting = _bot.segments.length > kPlayerMinSegments + 10;
+        _state = _BotState.hunt;
+        return;
+      }
+    }
+
+    // Para de dar boost quando não está caçando
+    _bot.isBoosting = false;
+
+    // 5. Comida — só busca comida dentro da zona segura
     final food = _bestFood(head);
     if (food != null) {
       final toFood = (food.position - head).normalized();
@@ -86,18 +111,6 @@ mixin BotAI on BotState {
       return;
     }
 
-    // 5. Caça
-    if (_bot.length > 25) {
-      final prey = _findPrey(head);
-      if (prey != null) {
-        final toPrey = (prey - head).normalized();
-        _bot.botTargetDirection =
-            (_bot.botTargetDirection * 0.4 + toPrey * 0.6).normalized();
-        _state = _BotState.hunt;
-        return;
-      }
-    }
-
     _state = _BotState.explore;
     _doExplore(head, world);
   }
@@ -105,18 +118,14 @@ mixin BotAI on BotState {
   // ✅ Força que empurra o bot para dentro da zona de perigo
   Vector2? _zoneForce(Vector2 head) {
     final engine = _bot.engine;
-
-    // Só aplica se a zona estiver ativa
     if (!engine.battleActive) return null;
 
     final center = engine.zoneCenter;
     final radius = engine.zoneRadius;
     final dist = head.distanceTo(center);
 
-    // Dentro da zona com margem de segurança — sem força
     if (dist < radius - _zoneMargin) return null;
 
-    // Está perto da borda ou fora — empurra para o centro
     final toCenter = (center - head).normalized();
     final urgency =
         ((dist - (radius - _zoneMargin)) / _zoneMargin).clamp(0.0, 1.0);
@@ -145,7 +154,6 @@ mixin BotAI on BotState {
     final engine = _bot.engine;
 
     if (engine.battleActive) {
-      // Gera alvo aleatório dentro do círculo da zona
       final center = engine.zoneCenter;
       final safeRadius =
           (engine.zoneRadius - _zoneMargin * 0.5).clamp(100.0, double.infinity);
@@ -235,15 +243,36 @@ mixin BotAI on BotState {
     return best;
   }
 
+  // ✅ Caça bots menores E o player se for menor
   Vector2? _findPrey(Vector2 head) {
+    Vector2? bestPrey;
+    double bestDist = double.infinity;
+
+    // Verifica bots menores
     for (final bot in _bot.engine.bots) {
-      if (bot == _bot || !bot.isAlive) continue;
-      if (bot.length < _bot.length * 0.7) {
-        if (head.distanceTo(bot.segments.first) < 800) {
-          return bot.segments.first;
+      if (bot == _bot || !bot.isAlive || bot.segments.isEmpty) continue;
+      // Só caça se for significativamente maior
+      if (bot.length + _huntSizeLead > _bot.length) continue;
+
+      final dist = head.distanceTo(bot.segments.first);
+      if (dist < _huntRadius && dist < bestDist) {
+        bestDist = dist;
+        bestPrey = bot.segments.first;
+      }
+    }
+
+    // Verifica o player se for menor
+    final player = _bot.engine.player;
+    if (player.isAlive && player.segments.isNotEmpty) {
+      if (player.length + _huntSizeLead <= _bot.length) {
+        final dist = head.distanceTo(player.segments.first);
+        if (dist < _huntRadius && dist < bestDist) {
+          bestDist = dist;
+          bestPrey = player.segments.first;
         }
       }
     }
-    return null;
+
+    return bestPrey;
   }
 }

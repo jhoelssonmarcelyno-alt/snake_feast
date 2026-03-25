@@ -1,5 +1,5 @@
 // lib/utils/constants.dart
-import 'package:flutter/material.dart' show Color, Colors;
+import 'package:flutter/material.dart' show Color;
 
 // ─── MUNDO E GRID ─────────────────────────────────────────────
 const double kWorldWidth = 6000.0;
@@ -48,13 +48,18 @@ const double kZoneDamagePerSecond = 5.0; // Dano por segundo fora da zona
 const double kFoodCommonRadius = 6.0;
 const double kFoodMassRadius = 11.0;
 const double kFoodMassGlowRadius = 18.0;
-const int kFoodCommonValue = 1;
+const int kFoodCommonValue = 5;
 const int kFoodStarValue = 10;
 const double kFoodStarRadius = 9.0;
 const int kFoodBotMassValue = 5;
 const int kFoodBoostMassValue = 3;
-const int kCommonFoodCount = 1500;
+const int kCommonFoodCount = 1500; // total inicial de comida no mapa
+const int kFoodMinCount = 80; // mínimo absoluto dentro da zona final
+const double kMinFoodDensity = 0.004; // comidas por px² dentro da zona ativa
 const double kEatRadius = 14.0;
+
+// ─── CRESCIMENTO ──────────────────────────────────────────────
+const int kGrowThreshold = 10;
 
 // ─── COLISÃO E PARTÍCULAS ─────────────────────────────────────
 const double kCollisionBodyRatio = 0.7;
