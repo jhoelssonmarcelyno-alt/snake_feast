@@ -1,99 +1,49 @@
-// lib/components/snake_bot.dart
 import 'dart:math';
 import 'dart:ui';
+import 'package:flame/components.dart';
 import 'package:flutter/material.dart'
-    show Colors, Color, TextPainter, TextSpan, TextStyle, TextDirection, Shadow;
+    show TextPainter, TextSpan, TextStyle, TextDirection, Shadow, FontWeight;
+
 import '../game/snake_engine.dart';
-import '../game/engine_food.dart';
 import '../services/haptic_service.dart';
 import 'food.dart';
-import 'death_particle.dart';
+// Removido import não utilizado de death_particle
 import 'snake_bot_ai.dart';
-import 'snake_bot_accessories.dart';
+import 'snake_bot_accessories.dart' hide BotPersonalityType;
 import 'snake_bot_renderer.dart';
+import 'bot/bot_state.dart';
+import 'bot/bot_movement.dart';
+import 'bot/bot_paints.dart';
 import '../utils/constants.dart';
-import 'package:flame/components.dart';
 
-typedef BotPersonality = BotPersonalityType;
-
-class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
-  @override
+class SnakeBot extends Component
+    with
+        BotState,
+        BotMovement,
+        BotPaints,
+        BotAI,
+        BotAccessoryRenderer,
+        BotRenderer {
   final SnakeEngine engine;
   final int botId;
   final String name;
-  @override
+
   final Color bodyColor;
-  @override
   final Color bodyColorDark;
-  final BotPersonality personality;
 
-  @override
-  final List<Vector2> segments = [];
+  final BotPersonalityType personality;
 
-  // ── BotAI ────────────────────────────────────────────────
-  Vector2 _botDirection = Vector2(1, 0);
-  Vector2 _botTargetDirection = Vector2(1, 0);
-  double _botWanderTimer = 0.0;
-  @override
-  Vector2 get botDirection => _botDirection;
-  @override
-  set botDirection(Vector2 v) => _botDirection = v;
-  @override
-  Vector2 get botTargetDirection => _botTargetDirection;
-  @override
-  set botTargetDirection(Vector2 v) => _botTargetDirection = v;
-  @override
-  double get botWanderTimer => _botWanderTimer;
-  @override
-  set botWanderTimer(double v) => _botWanderTimer = v;
-  @override
+  Vector2 botDirection = Vector2(1, 0);
+  Vector2 botTargetDirection = Vector2(1, 0);
+  double botWanderTimer = 0.0;
+  double accTimer = 0.0;
   final Random rng = Random();
 
-  // ── Estado ───────────────────────────────────────────────
-  bool _isBoosting = false;
-  double _boostTimer = 0.0;
-  double _boostDrainAccum = 0.0;
-  bool isAlive = false;
-  int score = 0;
+  int get length => segments.length;
 
-  // ✅ Acumula pontos antes de crescer — igual ao player (1 seg a cada 10 pts)
-  int _growAccum = 0;
-
-  double _accTimerInternal = 0.0;
+  late TextPainter _namePainter;
   @override
-  double get accTimer => _accTimerInternal;
-  @override
-  bool get isBoosting => _isBoosting;
-
-  // ── Paints ───────────────────────────────────────────────
-  final Paint _botBodyPaintField = Paint();
-  final Paint _botShadowPaintField = Paint()..color = const Color(0x28000000);
-  final Paint _botHighlightPaintField = Paint()
-    ..color = const Color(0x55FFFFFF);
-  final Paint _botEyeWhiteField = Paint()..color = Colors.white;
-  final Paint _botEyePupilField = Paint()..color = Colors.black;
-  final Paint _botBoostGlowPaintField = Paint()
-    ..color = const Color(0x40FFFFFF);
-  late Paint _botHeadPaintField;
-
-  @override
-  Paint get botBodyPaint => _botBodyPaintField;
-  @override
-  Paint get botShadowPaint => _botShadowPaintField;
-  @override
-  Paint get botHighlightPaint => _botHighlightPaintField;
-  @override
-  Paint get botEyeWhite => _botEyeWhiteField;
-  @override
-  Paint get botEyePupil => _botEyePupilField;
-  @override
-  Paint get botBoostGlowPaint => _botBoostGlowPaintField;
-  @override
-  Paint get botHeadPaint => _botHeadPaintField;
-
-  late TextPainter _namePainterField;
-  @override
-  TextPainter get namePainter => _namePainterField;
+  TextPainter get namePainter => _namePainter;
 
   SnakeBot({
     required this.botId,
@@ -107,15 +57,15 @@ class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    _botHeadPaintField = Paint()..color = bodyColor;
+    botHeadPaint.color = bodyColor;
     _buildNamePainter();
     respawn();
   }
 
   void _buildNamePainter() {
-    _namePainterField = TextPainter(
+    _namePainter = TextPainter(
       text: TextSpan(
-        text: name,
+        text: '$name (Lv. $level)',
         style: TextStyle(
           color: bodyColor,
           fontSize: 11,
@@ -128,20 +78,22 @@ class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
   }
 
   void respawn() {
+    resetState();
     segments.clear();
-    score = 0;
-    _growAccum = 0; // ✅ reseta acumulador
-    _isBoosting = false;
-    _boostTimer = 0;
-    _boostDrainAccum = 0;
-    _botWanderTimer = rng.nextDouble() * kBotWanderInterval;
-    _accTimerInternal = 0;
+    Vector2 spawnPos = _generateValidSpawnPos();
+    final double angle = rng.nextDouble() * pi * 2;
+    botDirection = botTargetDirection = Vector2(cos(angle), sin(angle));
+    for (int i = 0; i < kBotInitialSegments; i++) {
+      segments.add(spawnPos - botDirection * (kBotSegmentSpacing * i));
+    }
+    isAlive = true;
+  }
 
-    Vector2 spawnPos;
+  Vector2 _generateValidSpawnPos() {
+    Vector2 pos;
     int attempts = 0;
-    const double minDist = 800.0;
     do {
-      spawnPos = Vector2(
+      pos = Vector2(
         kWorldMargin +
             rng.nextDouble() * (engine.worldSize.x - kWorldMargin * 2),
         kWorldMargin +
@@ -151,92 +103,86 @@ class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
     } while (attempts < 20 &&
         engine.player.isAlive &&
         engine.player.segments.isNotEmpty &&
-        spawnPos.distanceTo(engine.player.segments.first) < minDist);
-
-    final double angle = rng.nextDouble() * pi * 2;
-    _botDirection = _botTargetDirection = Vector2(cos(angle), sin(angle));
-    for (int i = 0; i < kBotInitialSegments; i++) {
-      segments.add(spawnPos - _botDirection * (kBotSegmentSpacing * i));
-    }
-    isAlive = true;
+        pos.distanceTo(engine.player.segments.first) < 800);
+    return pos;
   }
 
   @override
   void update(double dt) {
     if (!isAlive) return;
-    _accTimerInternal += dt;
+
+    accTimer += dt;
     tickAI(dt);
-    _updateBoost(dt);
-    _updateDirection(dt);
-    _moveSegments(dt);
-    _handleBoostDrain(dt);
-    _checkFoodCollisions();
-  }
+    _updateBoostLogic(dt);
 
-  void _updateBoost(double dt) {
-    if (_isBoosting) {
-      _boostTimer -= dt;
-      if (_boostTimer <= 0 || segments.length <= kPlayerMinSegments) {
-        _isBoosting = false;
-      }
-    } else {
-      if (segments.length > kPlayerMinSegments + 5 &&
-          rng.nextDouble() < kBotBoostChance) {
-        _isBoosting = true;
-        _boostTimer = kBotBoostDuration;
-      }
-    }
-  }
-
-  void _updateDirection(double dt) {
     final double t = (kBotTurnLerp * dt).clamp(0.0, 1.0);
-    final Vector2 lerped = _botDirection.clone()..lerp(_botTargetDirection, t);
-    if (lerped.length2 > 0) lerped.normalize();
-    _botDirection = lerped;
+    botDirection =
+        (botDirection.clone()..lerp(botTargetDirection, t)).normalized();
+
+    moveSegments(dt, botDirection, isBoosting, engine.worldSize);
+
+    _checkFoodCollisions();
+    _checkSnakeCollisions();
   }
 
-  void _moveSegments(double dt) {
-    final double speed = _isBoosting ? kBotBoostSpeed : kBotBaseSpeed;
-    final Vector2 newHead = segments.first + _botDirection * (speed * dt);
-    newHead.x = newHead.x % engine.worldSize.x;
-    newHead.y = newHead.y % engine.worldSize.y;
-    if (newHead.x < 0) newHead.x += engine.worldSize.x;
-    if (newHead.y < 0) newHead.y += engine.worldSize.y;
-    for (int i = segments.length - 1; i > 0; i--) {
-      segments[i] = segments[i - 1].clone();
-    }
-    segments[0] = newHead;
-  }
-
-  void _handleBoostDrain(double dt) {
-    if (!_isBoosting || segments.length <= kPlayerMinSegments) return;
-    _boostDrainAccum += kPlayerBoostDrain * dt;
-    while (_boostDrainAccum >= 1.0 && segments.length > kPlayerMinSegments) {
-      _boostDrainAccum -= 1.0;
-      final food = Food.snakeMass(
-          position: segments.last.clone(), segmentColor: bodyColor);
-      engine.foods.add(food);
-      segments.removeLast();
+  void _updateBoostLogic(double dt) {
+    if (isBoosting && segments.length > kPlayerMinSegments) {
+      boostDrainAccum += kPlayerBoostDrain * dt;
+      if (boostDrainAccum >= 1.0) {
+        boostDrainAccum -= 1.0;
+        segments.removeLast();
+      }
     }
   }
 
   void _checkFoodCollisions() {
-    final Vector2 head = segments.first;
+    if (segments.isEmpty) return;
+    final head = segments.first;
     final double er = headRadius + kEatRadius;
-    for (final food in List<Food>.from(engine.foods)) {
+
+    // ✅ CORREÇÃO: Removendo da lista de forma segura
+    for (int i = engine.foods.length - 1; i >= 0; i--) {
+      final food = engine.foods[i];
       if (food.position.distanceTo(head) < er) {
-        engine.consumeFood(food, this);
+        // Se sua classe Food não for um Component, você não chama removeFromParent
+        // Você apenas remove da lista do motor
+        engine.foods.removeAt(i);
         grow(food.value);
       }
     }
   }
 
-  // ✅ Mesmo ritmo do player: 1 segmento a cada 10 pontos
+  void _checkSnakeCollisions() {
+    if (segments.isEmpty || !isAlive) return;
+    final head = segments.first;
+    final double headR = headRadius;
+
+    if (engine.player.isAlive) {
+      for (final segment in engine.player.segments) {
+        if (head.distanceTo(segment) <
+            (headR + engine.player.headRadius * 0.8)) {
+          die(killedByPlayer: true);
+          return;
+        }
+      }
+    }
+
+    for (final otherBot in engine.bots) {
+      if (otherBot == this || !otherBot.isAlive) continue;
+      for (final segment in otherBot.segments) {
+        if (head.distanceTo(segment) < (headR + otherBot.headRadius * 0.8)) {
+          die();
+          return;
+        }
+      }
+    }
+  }
+
   void grow(int amount) {
     score += amount;
-    _growAccum += amount;
-    while (_growAccum >= 10) {
-      _growAccum -= 10;
+    growAccum += amount;
+    while (growAccum >= 10) {
+      growAccum -= 10;
       segments.add(segments.last.clone());
     }
   }
@@ -244,36 +190,25 @@ class SnakeBot extends Component with BotAI, BotAccessoryRenderer, BotRenderer {
   void die({bool killedByPlayer = false}) {
     if (!isAlive) return;
     isAlive = false;
-    final particles = DeathParticle.burst(
-        engine: engine, center: segments.first.clone(), color: bodyColor);
-    for (final p in particles) engine.add(p);
-    engine.explodeSnake(segments, bodyColor);
+
+    // ✅ CORREÇÃO: Adicionando massa sem erro de tipo
+    for (var i = 0; i < segments.length; i += 2) {
+      engine.foods.add(Food.snakeMass(
+          position: segments[i].clone(), segmentColor: bodyColor));
+    }
+
     if (killedByPlayer) {
       engine.player.registerKill();
       HapticService.instance.kill();
     }
+    segments.clear();
     engine.scheduleBotRespawn(this);
   }
 
-  Vector2 get headPosition =>
-      segments.isEmpty ? Vector2.zero() : segments.first;
   @override
   double get headRadius =>
       kBotHeadRadius + (segments.length * 0.02).clamp(0.0, 5.0);
-  int get length => segments.length;
 
   @override
   void render(Canvas canvas) => renderBot(canvas);
-
-  @override
-  void renderHead(Canvas canvas, Offset pos, double hr) {
-    canvas.drawCircle(pos + const Offset(2, 2), hr, botShadowPaint);
-    if (_isBoosting) canvas.drawCircle(pos, hr + 3, botBoostGlowPaint);
-    botHeadPaint.color = bodyColor;
-    canvas.drawCircle(pos, hr, botHeadPaint);
-    renderEyes(canvas, pos, hr);
-    canvas.drawCircle(
-        pos + Offset(-hr * 0.25, -hr * 0.25), hr * 0.32, botHighlightPaint);
-    renderAccessoryForPersonality(personality, canvas, pos, hr);
-  }
 }

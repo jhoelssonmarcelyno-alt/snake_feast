@@ -6,13 +6,19 @@ import 'package:flutter/material.dart'
     show
         Colors,
         Color,
+        FontWeight,
         TextPainter,
+        TextSpan,
+        TextStyle,
+        TextDirection,
+        Shadow,
         HSVColor,
         RadialGradient,
         LinearGradient,
         Alignment;
 import '../game/snake_engine.dart';
-import 'snake_player_expressions.dart';
+import 'snake_player.dart';
+import 'expressions/expressions_mixin.dart';
 import 'animal_skins.dart';
 
 const _kAnimalSkinIds = {
@@ -128,7 +134,10 @@ mixin PlayerRenderer on PlayerExpressions {
     _shimmerPaint.shader = RadialGradient(
       center: const Alignment(-0.5, -0.5),
       radius: 0.65,
-      colors: [Colors.white.withValues(alpha: 0.35), Colors.white.withValues(alpha: 0.0)],
+      colors: [
+        Colors.white.withValues(alpha: 0.35),
+        Colors.white.withValues(alpha: 0.0)
+      ],
     ).createShader(Rect.fromLTWH(0, -r, tailLen * 0.6, r * 2));
     canvas.drawPath(path, _shimmerPaint);
     canvas.restore();
@@ -214,7 +223,6 @@ mixin PlayerRenderer on PlayerExpressions {
     canvas.translate(pos.dx, pos.dy);
     canvas.rotate(angle);
 
-    // Sombra projetada
     bodyPaint.color = Colors.black.withValues(alpha: 0.30);
     canvas.drawOval(
       Rect.fromCenter(
@@ -222,7 +230,6 @@ mixin PlayerRenderer on PlayerExpressions {
       bodyPaint,
     );
 
-    // Glow de boost
     if (isBoosting) {
       _glowPaint.color = skinAccentColor.withValues(alpha: 0.40);
       canvas.drawOval(
@@ -236,11 +243,9 @@ mixin PlayerRenderer on PlayerExpressions {
     final double hh = hr * shape.$2;
 
     if (isAnimal) {
-      // ✅ Passo 1: orelhas/chifres/juba ATRÁS do oval
       renderAnimalBackLayer(
           canvas, skinId, hr, tongueTimer, skinBodyColor, skinBodyColorDark);
 
-      // ✅ Passo 2: oval base com gradiente por cima das orelhas
       final headGrad = Paint()
         ..shader = RadialGradient(
           center: const Alignment(-0.30, -0.40),
@@ -258,11 +263,13 @@ mixin PlayerRenderer on PlayerExpressions {
         headGrad,
       );
 
-      // ✅ Passo 3: highlight
       _shimmerPaint.shader = RadialGradient(
         center: const Alignment(-0.40, -0.50),
         radius: 0.60,
-        colors: [Colors.white.withValues(alpha: 0.48), Colors.white.withValues(alpha: 0.0)],
+        colors: [
+          Colors.white.withValues(alpha: 0.48),
+          Colors.white.withValues(alpha: 0.0)
+        ],
       ).createShader(
           Rect.fromCenter(center: Offset.zero, width: hw, height: hh));
       canvas.drawOval(
@@ -270,10 +277,8 @@ mixin PlayerRenderer on PlayerExpressions {
         _shimmerPaint,
       );
 
-      // ✅ Passo 4: features (olhos, nariz, boca) NA FRENTE do oval
       renderExpression(canvas, hr, tongueTimer);
     } else {
-      // Pipeline original para cobras normais
       final headGrad = Paint()
         ..shader = RadialGradient(
           center: const Alignment(-0.30, -0.40),
@@ -324,7 +329,10 @@ mixin PlayerRenderer on PlayerExpressions {
       _shimmerPaint.shader = RadialGradient(
         center: const Alignment(-0.40, -0.50),
         radius: 0.60,
-        colors: [Colors.white.withValues(alpha: 0.52), Colors.white.withValues(alpha: 0.0)],
+        colors: [
+          Colors.white.withValues(alpha: 0.52),
+          Colors.white.withValues(alpha: 0.0)
+        ],
       ).createShader(
           Rect.fromCenter(center: Offset.zero, width: hw, height: hh));
       canvas.drawOval(
@@ -337,12 +345,113 @@ mixin PlayerRenderer on PlayerExpressions {
     canvas.restore();
   }
 
+  // ── Nome + badge de level ─────────────────────────────────────
   void _renderName(Canvas canvas, Offset headPos, double hr) {
     namePainter.paint(canvas,
         Offset(headPos.dx - namePainter.width / 2, headPos.dy - hr - 22));
+
     if (engine.leader == this) {
       _drawCrown(canvas, Offset(headPos.dx, headPos.dy - hr - 30), hr);
     }
+
+    _drawLevelBadge(canvas, headPos, hr);
+  }
+
+  // ── Badge de level ────────────────────────────────────────────
+  void _drawLevelBadge(Canvas canvas, Offset headPos, double hr) {
+    final SnakePlayer player = engine.player;
+    final int lvl = player.level;
+    final bool isLevelUpAnim = player.levelUpTimer > 0;
+
+    // Badge fica 28px acima do nome (que já fica hr+22 acima da cabeça)
+    final double badgeY = headPos.dy - hr - 42 - (isLevelUpAnim ? 16 : 0);
+    final double badgeX = headPos.dx;
+
+    // ── Texto "Lv.N" ─────────────────────────────────────────
+    final String lvlText = 'Lv.$lvl';
+    final badgePainter = TextPainter(
+      text: TextSpan(
+        text: lvlText,
+        style: TextStyle(
+          color: _levelColor(lvl),
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          shadows: const [Shadow(color: Color(0xFF000000), blurRadius: 4)],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    // Fundo arredondado semi-transparente
+    const double padH = 6, padV = 3;
+    final double bw = badgePainter.width + padH * 2;
+    final double bh = badgePainter.height + padV * 2;
+    final RRect badgeRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset(badgeX, badgeY), width: bw, height: bh),
+      const Radius.circular(6),
+    );
+
+    // Fundo escuro
+    canvas.drawRRect(
+      badgeRect,
+      Paint()..color = const Color(0xCC000000),
+    );
+    // Borda colorida por tier
+    canvas.drawRRect(
+      badgeRect,
+      Paint()
+        ..color = _levelColor(lvl).withValues(alpha: 0.7)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+
+    // Texto do level
+    badgePainter.paint(
+      canvas,
+      Offset(badgeX - badgePainter.width / 2, badgeY - badgePainter.height / 2),
+    );
+
+    // ── Animação "LEVEL UP!" flutuante ────────────────────────
+    if (isLevelUpAnim) {
+      final double progress = player.levelUpTimer / 2.0; // 1.0 → 0.0
+      final double alpha = (progress * 2).clamp(0.0, 1.0); // fade out
+      final double floatOffset = (1.0 - progress) * 12; // sobe 12px
+
+      final lvlUpPainter = TextPainter(
+        text: TextSpan(
+          text: 'LEVEL UP!',
+          style: TextStyle(
+            color: const Color(0xFFFFD600).withValues(alpha: alpha),
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            shadows: [
+              Shadow(
+                color: const Color(0xFFFFD600).withValues(alpha: alpha * 0.6),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      lvlUpPainter.paint(
+        canvas,
+        Offset(
+          badgeX - lvlUpPainter.width / 2,
+          badgeY - bh - 6 - floatOffset,
+        ),
+      );
+    }
+  }
+
+  /// Cor do badge baseada no tier de level
+  Color _levelColor(int lvl) {
+    if (lvl >= 50) return const Color(0xFF00E5FF); // Diamante (ciano)
+    if (lvl >= 30) return const Color(0xFFE040FB); // Platina  (roxo)
+    if (lvl >= 20) return const Color(0xFFFFD600); // Ouro
+    if (lvl >= 10) return const Color(0xFFB0BEC5); // Prata
+    return const Color(0xFFCD7F32); // Bronze
   }
 
   void _drawCrown(Canvas canvas, Offset pos, double hr) {

@@ -1,4 +1,3 @@
-// lib/game/engine_food.dart
 import 'dart:math';
 import 'dart:ui' show Color;
 import '../components/food.dart';
@@ -7,28 +6,48 @@ import '../utils/constants.dart';
 import 'package:flame/components.dart';
 
 extension EngineFood on SnakeEngine {
+  /// Busca o componente de zona no jogo (CircleComponent ou ZoneComponent)
+  /// Isso evita o erro de "Undefined name"
+  CircleComponent? get _findZone =>
+      children.whereType<CircleComponent>().firstOrNull;
+
+  Vector2 _getRandomPositionInZone() {
+    final zone = _findZone;
+    // Se não achar a zona, usa o tamanho do mapa como segurança
+    if (zone == null) {
+      return Vector2(
+        kWallThickness + rng.nextDouble() * (worldSize.x - kWallThickness * 2),
+        kWallThickness + rng.nextDouble() * (worldSize.y - kWallThickness * 2),
+      );
+    }
+
+    final zoneCenter = zone.position;
+    final zoneRadius = zone.radius * 0.95;
+    final angle = rng.nextDouble() * pi * 2;
+    final distance = sqrt(rng.nextDouble()) * zoneRadius;
+
+    return Vector2(
+      zoneCenter.x + cos(angle) * distance,
+      zoneCenter.y + sin(angle) * distance,
+    );
+  }
+
   void spawnCommonFood(int count) {
     for (int i = 0; i < count; i++) {
       foods.add(Food.common(
-        position: Vector2(
-          kWallThickness +
-              rng.nextDouble() * (worldSize.x - kWallThickness * 2),
-          kWallThickness +
-              rng.nextDouble() * (worldSize.y - kWallThickness * 2),
-        ),
+        position: _getRandomPositionInZone(),
       ));
     }
   }
 
-  /// Spawna estrelas bônus = 10% da contagem de comida comum
   void spawnStars() {
-    final int count = (foods.where((f) => f.type == FoodType.common).length * 0.10).ceil().clamp(1, 50);
+    final int count =
+        (foods.where((f) => f.type == FoodType.common).length * 0.10)
+            .ceil()
+            .clamp(1, 50);
     for (int i = 0; i < count; i++) {
       foods.add(Food.star(
-        position: Vector2(
-          kWallThickness + rng.nextDouble() * (worldSize.x - kWallThickness * 2),
-          kWallThickness + rng.nextDouble() * (worldSize.y - kWallThickness * 2),
-        ),
+        position: _getRandomPositionInZone(),
       ));
     }
   }
@@ -36,21 +55,15 @@ extension EngineFood on SnakeEngine {
   void consumeFood(Food food, dynamic snake) {
     if (!foods.contains(food)) return;
     foods.remove(food);
+
     if (food.type == FoodType.common) {
       foods.add(Food.common(
-        position: Vector2(
-          kWallThickness + rng.nextDouble() * (worldSize.x - kWallThickness * 2),
-          kWallThickness + rng.nextDouble() * (worldSize.y - kWallThickness * 2),
-        ),
+        position: _getRandomPositionInZone(),
       ));
     } else if (food.type == FoodType.star) {
-      // Respawna estrela em posição aleatória após delay
       Future.delayed(const Duration(seconds: 8), () {
         foods.add(Food.star(
-          position: Vector2(
-            kWallThickness + rng.nextDouble() * (worldSize.x - kWallThickness * 2),
-            kWallThickness + rng.nextDouble() * (worldSize.y - kWallThickness * 2),
-          ),
+          position: _getRandomPositionInZone(),
         ));
       });
     }
@@ -60,13 +73,26 @@ extension EngineFood on SnakeEngine {
     final int total = segments.length;
     final int count = total.clamp(8, 60);
     final int step = (total / count).ceil().clamp(1, 999);
+    final zone = _findZone;
+
     for (int i = 0; i < total; i += step) {
       final offset = Vector2(
         (rng.nextDouble() - 0.5) * 40,
         (rng.nextDouble() - 0.5) * 40,
       );
+
+      final pos = segments[i].clone() + offset;
+
+      // Se a zona existir, checa se a explosão está dentro
+      if (zone != null) {
+        if (pos.distanceToSquared(zone.position) >
+            (zone.radius * zone.radius)) {
+          continue; // Pula essa partícula se estiver fora
+        }
+      }
+
       foods.add(Food.botMass(
-        position: segments[i].clone() + offset,
+        position: pos,
         segmentColor: color,
       ));
     }
@@ -98,8 +124,23 @@ extension EngineFood on SnakeEngine {
   }
 
   void updateFoods(double dt) {
-    for (final food in foods) {
+    final zone = _findZone;
+
+    foods.removeWhere((food) {
+      // Se a zona existir, remove o que estiver fora
+      if (zone != null) {
+        final distSq = food.position.distanceToSquared(zone.position);
+        if (distSq > (zone.radius * zone.radius)) {
+          // Garante a destruição do componente visual
+          if (food is Component) {
+            (food as Component).removeFromParent();
+          }
+          return true;
+        }
+      }
+
       food.update(dt);
-    }
+      return false;
+    });
   }
 }

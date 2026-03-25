@@ -6,13 +6,14 @@ import 'ui/main_menu/main_menu.dart';
 import 'game/snake_engine.dart';
 import 'utils/constants.dart';
 import 'overlays/game_over.dart';
-import 'overlays/hud.dart';
+import 'overlays/hud/hud_overlay.dart';
 import 'overlays/settings_overlay.dart';
 import 'overlays/pause_overlay.dart';
 import 'overlays/revive_overlay.dart';
 import 'overlays/shop_overlay.dart';
 import 'overlays/lobby_overlay.dart';
 import 'overlays/ranking_overlay.dart';
+import 'overlays/win_overlay.dart'; // ✅ Certifique-se de que este arquivo existe
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,7 +31,7 @@ class SnakeFeastApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Snake Feast',
+      title: 'Serpent Strike', // Nome do seu projeto atual
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
       home: const GameScreen(),
@@ -67,7 +68,11 @@ class _GameScreenState extends State<GameScreen> {
         kOverlayShop: (context, game) => ShopOverlay(engine: game),
         kOverlayRevive: (context, game) => ReviveOverlay(engine: game),
         kOverlayLobby: (context, game) => LobbyOverlay(engine: game),
-        kOverlayRanking: (context, game) => RankingOverlay(engine: game), // ← novo
+        kOverlayRanking: (context, game) => RankingOverlay(engine: game),
+
+        // ✅ CORREÇÃO: Registrando o WinOverlay que o erro "unknown overlay" pediu
+        // Se a constante não existir no seu constants.dart, você pode usar "WinOverlay" direto
+        'WinOverlay': (context, game) => WinOverlay(game: game),
       },
       initialActiveOverlays: const [kOverlayMainMenu],
     );

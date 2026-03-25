@@ -1,43 +1,40 @@
 // lib/components/snake_bot_ai.dart
-// IA dos bots com 3 estados: HUNT (caça comida/presas), FLEE (fuga), EXPLORE (explorar)
 import 'dart:math';
 import 'package:flame/components.dart' show Vector2;
-import '../game/snake_engine.dart';
+import 'package:flame/extensions.dart';
 import 'food.dart';
+import 'snake_bot.dart';
+import 'bot/bot_state.dart';
+import '../game/snake_engine.dart'; // já deve existir indiretamente
+import '../game/engine_zone.dart'; // ✅ ADICIONE ESTA LINHA
+
+enum BotPersonalityType { aggressive, wanderer, foodie }
 
 enum _BotState { hunt, flee, explore }
 
-mixin BotAI {
-  SnakeEngine get engine;
-  List<Vector2> get segments;
-  Random get rng;
-  bool get isBoosting;
-  int get length;
-  double get headRadius;
+mixin BotAI on BotState {
+  SnakeBot get _bot => this as SnakeBot;
 
-  Vector2 get botDirection;
-  set botDirection(Vector2 v);
-  Vector2 get botTargetDirection;
-  set botTargetDirection(Vector2 v);
-  double get botWanderTimer;
-  set botWanderTimer(double v);
+  // ── Configurações da IA ────────────────────────────────────────
+  static const double _aiInterval = 0.08;
+  static const double _visionRadius = 1400.0;
+  static const double _fleeRadius = 220.0;
+  static const double _wallMargin = 400.0;
+  static const double _zoneMargin = 350.0; // margem antes da borda da zona
 
-  // ── Estado interno ────────────────────────────────────────
   _BotState _state = _BotState.explore;
-  double _stateTimer = 0; // tempo no estado atual
+  double _stateTimer = 0;
   double _aiTimer = 0;
-  Vector2? _exploreTarget; // ponto alvo no modo explorar
+  Vector2? _exploreTarget;
   double _exploreTargetTimer = 0;
 
-  static const double _aiInterval = 0.08; // decisão a cada 80ms
-  static const double _visionRadius = 1400.0;
-  static const double _fleeRadius = 180.0;
-  static const double _wallMargin = 300.0;
-
   void tickAI(double dt) {
+    if (!_bot.isAlive || _bot.segments.isEmpty) return;
+
     _aiTimer += dt;
     _stateTimer += dt;
     _exploreTargetTimer -= dt;
+
     if (_aiTimer >= _aiInterval) {
       _aiTimer = 0;
       _decide();
@@ -45,254 +42,208 @@ mixin BotAI {
   }
 
   void _decide() {
-    if (segments.isEmpty) return;
-    final head = segments.first;
-    final world = engine.worldSize;
+    final head = _bot.segments.first;
+    final world = _bot.engine.worldSize;
 
-    // ── 1. Parede — sempre prioritário ───────────────────────
-    final wallForce = _wallForce(head, world);
-    if (wallForce != null) {
-      botTargetDirection = wallForce;
-      _state = _BotState.flee;
-      return;
-    }
-
-    // ── 2. Perigo de colisão — fuga ───────────────────────────
-    final danger = _dangerForce(head);
-    if (danger != null) {
-      botTargetDirection = danger;
+    // 1. ✅ Fuga da zona de perigo (prioridade máxima)
+    final zoneForce = _zoneForce(head);
+    if (zoneForce != null) {
+      _bot.botTargetDirection =
+          (_bot.botTargetDirection * 0.05 + zoneForce * 0.95).normalized();
       _state = _BotState.flee;
       _stateTimer = 0;
       return;
     }
 
-    // Se acabou de fugir, mantém estado por 0.3s para não oscilar
-    if (_state == _BotState.flee && _stateTimer < 0.30) return;
+    // 2. Evitar Paredes
+    final wallForce = _wallForce(head, world);
+    if (wallForce != null) {
+      _bot.botTargetDirection =
+          (_bot.botTargetDirection * 0.1 + wallForce * 0.9).normalized();
+      _state = _BotState.flee;
+      return;
+    }
 
-    // ── 3. Comida próxima — HUNT ──────────────────────────────
+    // 3. Perigo de colisão
+    final danger = _dangerForce(head);
+    if (danger != null) {
+      _bot.botTargetDirection =
+          (_bot.botTargetDirection * 0.2 + danger * 0.8).normalized();
+      _state = _BotState.flee;
+      _stateTimer = 0;
+      return;
+    }
+
+    if (_state == _BotState.flee && _stateTimer < 0.25) return;
+
+    // 4. Comida — só busca comida dentro da zona segura
     final food = _bestFood(head);
     if (food != null) {
       final toFood = (food.position - head).normalized();
-      // Suaviza curva para evitar colisão no caminho
-      botTargetDirection =
-          (botTargetDirection * 0.25 + toFood * 0.75).normalized();
+      _bot.botTargetDirection =
+          (_bot.botTargetDirection * 0.3 + toFood * 0.7).normalized();
       _state = _BotState.hunt;
       return;
     }
 
-    // ── 4. Caça bot menor (só se grande o suficiente) ─────────
-    if (length > 20) {
+    // 5. Caça
+    if (_bot.length > 25) {
       final prey = _findPrey(head);
       if (prey != null) {
-        botTargetDirection = (prey - head).normalized();
+        final toPrey = (prey - head).normalized();
+        _bot.botTargetDirection =
+            (_bot.botTargetDirection * 0.4 + toPrey * 0.6).normalized();
         _state = _BotState.hunt;
         return;
       }
     }
 
-    // ── 5. EXPLORE — move em linha reta até um alvo fixo ──────
     _state = _BotState.explore;
     _doExplore(head, world);
   }
 
-  // ─────────────────────────────────────────────────────────
-  // EXPLORE: escolhe um ponto alvo e vai direto até lá
-  // Evita o "ficar em círculos" do wander randômico
-  // ─────────────────────────────────────────────────────────
+  // ✅ Força que empurra o bot para dentro da zona de perigo
+  Vector2? _zoneForce(Vector2 head) {
+    final engine = _bot.engine;
+
+    // Só aplica se a zona estiver ativa
+    if (!engine.battleActive) return null;
+
+    final center = engine.zoneCenter;
+    final radius = engine.zoneRadius;
+    final dist = head.distanceTo(center);
+
+    // Dentro da zona com margem de segurança — sem força
+    if (dist < radius - _zoneMargin) return null;
+
+    // Está perto da borda ou fora — empurra para o centro
+    final toCenter = (center - head).normalized();
+    final urgency =
+        ((dist - (radius - _zoneMargin)) / _zoneMargin).clamp(0.0, 1.0);
+    return toCenter * urgency;
+  }
+
   void _doExplore(Vector2 head, Vector2 world) {
-    // Troca de alvo se chegou perto ou tempo expirou
-    final needNew = _exploreTarget == null ||
+    final bool needNew = _exploreTarget == null ||
         _exploreTargetTimer <= 0 ||
-        head.distanceTo(_exploreTarget!) < 200;
+        head.distanceTo(_exploreTarget!) < 300;
 
     if (needNew) {
       _exploreTarget = _pickExploreTarget(head, world);
-      _exploreTargetTimer = 3.0 + rng.nextDouble() * 3.0; // 3-6s por alvo
+      _exploreTargetTimer = 4.0 + _bot.rng.nextDouble() * 4.0;
     }
 
     if (_exploreTarget != null) {
       final toTarget = (_exploreTarget! - head).normalized();
-      // Suave para não girar bruscamente
-      botTargetDirection =
-          (botTargetDirection * 0.15 + toTarget * 0.85).normalized();
+      _bot.botTargetDirection =
+          (_bot.botTargetDirection * 0.2 + toTarget * 0.8).normalized();
     }
   }
 
-  // Escolhe um ponto de exploração inteligente:
-  // - Preferencialmente onde tem mais comida
-  // - Longe de outros bots
-  // - Dentro dos limites seguros
+  // ✅ Explore target sempre dentro da zona segura
   Vector2 _pickExploreTarget(Vector2 head, Vector2 world) {
-    final margin = _wallMargin + 100;
-    final safeW = world.x - margin * 2;
-    final safeH = world.y - margin * 2;
+    final engine = _bot.engine;
 
-    // Tenta 8 candidatos e escolhe o melhor
-    Vector2? best;
-    double bestScore = -1;
-
-    for (int i = 0; i < 8; i++) {
-      final candidate = Vector2(
-        margin + rng.nextDouble() * safeW,
-        margin + rng.nextDouble() * safeH,
+    if (engine.battleActive) {
+      // Gera alvo aleatório dentro do círculo da zona
+      final center = engine.zoneCenter;
+      final safeRadius =
+          (engine.zoneRadius - _zoneMargin * 0.5).clamp(100.0, double.infinity);
+      final angle = _bot.rng.nextDouble() * pi * 2;
+      final dist = _bot.rng.nextDouble() * safeRadius;
+      return Vector2(
+        center.x + cos(angle) * dist,
+        center.y + sin(angle) * dist,
       );
-
-      // Conta comida próxima ao candidato
-      double foodScore = 0;
-      for (final f in engine.foods) {
-        final d = f.position.distanceTo(candidate);
-        if (d < 400) foodScore += f.value / (d + 1);
-      }
-
-      // Penaliza se está muito perto de outros bots
-      double botPenalty = 0;
-      for (final bot in engine.bots) {
-        if (bot == this || !bot.isAlive) continue;
-        final d = bot.headPosition.distanceTo(candidate);
-        if (d < 300) botPenalty += 300 - d;
-      }
-
-      // Prefere pontos em direções diferentes da atual
-      final toCandidate = (candidate - head).normalized();
-      final dirBonus = toCandidate.dot(botTargetDirection) < 0
-          ? 0.0 // na direção oposta: sem bônus
-          : toCandidate.dot(botTargetDirection) * 200;
-
-      final score = foodScore - botPenalty * 0.5 + dirBonus;
-      if (score > bestScore) {
-        bestScore = score;
-        best = candidate;
-      }
     }
 
-    return best ?? Vector2(world.x / 2, world.y / 2);
+    return Vector2(
+      _bot.rng.nextDouble() * world.x,
+      _bot.rng.nextDouble() * world.y,
+    );
   }
 
-  // ─────────────────────────────────────────────────────────
-  // WALL FORCE
-  // ─────────────────────────────────────────────────────────
   Vector2? _wallForce(Vector2 head, Vector2 world) {
     Vector2 push = Vector2.zero();
-    double urgent = 0;
+    bool near = false;
 
-    void check(double dist, Vector2 dir) {
-      if (dist < _wallMargin) {
-        final f = 1.0 - dist / _wallMargin;
-        push += dir * f;
-        if (f > urgent) urgent = f;
-      }
+    if (head.x < _wallMargin) {
+      push.x = 1;
+      near = true;
+    } else if (head.x > world.x - _wallMargin) {
+      push.x = -1;
+      near = true;
     }
 
-    check(head.x, Vector2(1, 0));
-    check(world.x - head.x, Vector2(-1, 0));
-    check(head.y, Vector2(0, 1));
-    check(world.y - head.y, Vector2(0, -1));
+    if (head.y < _wallMargin) {
+      push.y = 1;
+      near = true;
+    } else if (head.y > world.y - _wallMargin) {
+      push.y = -1;
+      near = true;
+    }
 
-    if (urgent < 0.20) return null;
-    return (botTargetDirection + push * (3.0 + urgent * 5.0)).normalized();
+    return near ? push.normalized() : null;
   }
 
-  // ─────────────────────────────────────────────────────────
-  // DANGER FORCE — detecta colisões iminentes
-  // ─────────────────────────────────────────────────────────
   Vector2? _dangerForce(Vector2 head) {
     Vector2 force = Vector2.zero();
     bool found = false;
-
-    final dangerR = _fleeRadius + length * 0.4;
-    final dangerSq = dangerR * dangerR;
+    final double dangerR = _fleeRadius + (_bot.length * 0.5);
 
     void pushFrom(Vector2 pos, double multiplier) {
-      final dx = head.x - pos.x;
-      final dy = head.y - pos.y;
-      final sq = dx * dx + dy * dy;
-      if (sq < dangerSq && sq > 1) {
-        final d = sqrt(sq);
-        force += Vector2(dx / d, dy / d) * (1.0 - sq / dangerSq) * multiplier;
+      final double d = head.distanceTo(pos);
+      if (d < dangerR && d > 1) {
+        force += (head - pos).normalized() * (1.0 - d / dangerR) * multiplier;
         found = true;
       }
     }
 
-    // Cabeça do player — máximo perigo
-    if (engine.player.isAlive) {
-      pushFrom(engine.player.headPosition, 5.0);
-      // Corpo do player (amostrado de 3 em 3)
-      final ps = engine.player.segments;
-      for (int i = 3; i < ps.length; i += 3) pushFrom(ps[i], 2.0);
+    if (_bot.engine.player.isAlive) {
+      pushFrom(_bot.engine.player.segments.first, 6.0);
     }
 
-    // Outros bots
-    for (final bot in engine.bots) {
-      if (bot == this || !bot.isAlive) continue;
-      // Cabeça de bots do mesmo tamanho ou maior
-      if (bot.length >= length * 0.75) pushFrom(bot.headPosition, 4.0);
-      // Corpo
-      final bs = bot.segments;
-      for (int i = 3; i < bs.length; i += 3) pushFrom(bs[i], 1.5);
+    for (final bot in _bot.engine.bots) {
+      if (bot == _bot || !bot.isAlive) continue;
+      pushFrom(bot.segments.first, 4.0);
     }
 
-    if (!found || force.length2 < 0.01) return null;
-
-    // Combina fuga com perpendicular para não bater em frente
-    final flee = force.normalized();
-    final perp = Vector2(-botDirection.y, botDirection.x);
-    final dot = flee.dot(perp);
-    // Escolhe o perpendicular que vai na direção de fuga
-    final chosenPerp = dot >= 0 ? perp : -perp;
-    return (flee * 0.7 + chosenPerp * 0.3).normalized();
+    return found ? force.normalized() : null;
   }
 
-  // ─────────────────────────────────────────────────────────
-  // BEST FOOD
-  // ─────────────────────────────────────────────────────────
   Food? _bestFood(Vector2 head) {
-    final visionSq = _visionRadius * _visionRadius;
     Food? best;
-    double bestScore = -1;
+    double maxScore = -1;
+    final engine = _bot.engine;
 
     for (final food in engine.foods) {
-      final sq = food.position.distanceToSquared(head);
-      if (sq > visionSq) continue;
-      // Score: valor / raiz da distância (valoriza comida valiosa perto)
-      final score = food.value * 10.0 / (sqrt(sq) + 20.0);
-      if (score > bestScore) {
-        bestScore = score;
+      final double d = head.distanceTo(food.position);
+      if (d > _visionRadius) continue;
+
+      // ✅ Ignora comida fora da zona quando a zona está ativa
+      if (engine.battleActive) {
+        final distToCenter = food.position.distanceTo(engine.zoneCenter);
+        if (distToCenter > engine.zoneRadius) continue;
+      }
+
+      final double score = food.value / (d + 1);
+      if (score > maxScore) {
+        maxScore = score;
         best = food;
       }
     }
-
-    // Fallback: comida mais próxima em qualquer lugar
-    if (best == null) {
-      double nearest = double.infinity;
-      for (final food in engine.foods) {
-        final sq = food.position.distanceToSquared(head);
-        if (sq < nearest) {
-          nearest = sq;
-          best = food;
-        }
-      }
-    }
-
     return best;
   }
 
-  // ─────────────────────────────────────────────────────────
-  // FIND PREY
-  // ─────────────────────────────────────────────────────────
   Vector2? _findPrey(Vector2 head) {
-    const double huntSq = 700.0 * 700.0;
-    double best = double.infinity;
-    Vector2? target;
-
-    for (final bot in engine.bots) {
-      if (bot == this || !bot.isAlive) continue;
-      if (bot.length >= length * 0.65) continue;
-      final sq = bot.headPosition.distanceToSquared(head);
-      if (sq < huntSq && sq < best) {
-        best = sq;
-        target = bot.headPosition;
+    for (final bot in _bot.engine.bots) {
+      if (bot == _bot || !bot.isAlive) continue;
+      if (bot.length < _bot.length * 0.7) {
+        if (head.distanceTo(bot.segments.first) < 800) {
+          return bot.segments.first;
+        }
       }
     }
-    return target;
+    return null;
   }
 }

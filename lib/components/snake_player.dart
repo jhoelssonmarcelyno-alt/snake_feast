@@ -17,7 +17,7 @@ import '../services/haptic_service.dart';
 import '../services/score_service.dart';
 import 'food.dart';
 import 'death_particle.dart';
-import 'snake_player_expressions.dart';
+import 'expressions/expressions_mixin.dart';
 import 'snake_player_renderer.dart';
 import '../utils/constants.dart';
 import 'package:flame/components.dart';
@@ -88,8 +88,15 @@ class SnakePlayer extends Component
   int _coinsEarned = 0;
   int _diamondsEarned = 0;
 
-  // ✅ Acumula pontos antes de crescer — 1 segmento a cada 10 pontos
+  // ── Acumula pontos antes de crescer — 1 segmento a cada 10 pontos ──
   int _growAccum = 0;
+
+  // ── Sistema de Level ─────────────────────────────────────────
+  int level = 1;
+  int _starsForLevel = 0; // estrelas acumuladas (food.value >= 5)
+  int _foodForLevel = 0; // comidas normais acumuladas
+  int _killsForLevel = 0; // kills acumuladas (1 kill = +1 level)
+  double levelUpTimer = 0.0; // quando > 0 exibe badge "LEVEL UP!" na tela
 
   String name = 'Você';
 
@@ -157,6 +164,12 @@ class SnakePlayer extends Component
     _boostDrainAccum = 0;
     _tongueTimer = 0;
     _isAlive = true;
+    // Reset do sistema de level
+    level = 1;
+    _starsForLevel = 0;
+    _foodForLevel = 0;
+    _killsForLevel = 0;
+    levelUpTimer = 0.0;
     for (int i = 0; i < kPlayerInitialSegments; i++) {
       _segments.add(pos - Vector2(kPlayerSegmentSpacing * i, 0));
     }
@@ -221,6 +234,8 @@ class SnakePlayer extends Component
   void update(double dt) {
     if (!_isAlive) return;
     _tongueTimer += dt;
+    // Decrementa timer do badge "LEVEL UP!"
+    if (levelUpTimer > 0) levelUpTimer = (levelUpTimer - dt).clamp(0.0, 10.0);
     _updateTargetFromJoystick();
     _updateDirection(dt);
     _moveSegments(dt);
@@ -290,8 +305,9 @@ class SnakePlayer extends Component
     score += amount;
     foodEaten += amount;
     _checkRewardMilestones();
+    _checkLevelMilestones(amount);
 
-    // ✅ Cresce 1 segmento a cada 10 pontos acumulados
+    // Cresce 1 segmento a cada 10 pontos acumulados
     _growAccum += amount;
     while (_growAccum >= 10) {
       _growAccum -= 10;
@@ -312,8 +328,40 @@ class SnakePlayer extends Component
     }
   }
 
+  // ── Sistema de Level ─────────────────────────────────────────
+
+  void _checkLevelMilestones(int amount) {
+    // Food especial (estrela): food.value >= 5 → 2 estrelas = +1 level
+    if (amount >= 5) {
+      _starsForLevel++;
+      if (_starsForLevel >= 2) {
+        _starsForLevel = 0;
+        _gainLevel();
+      }
+    } else {
+      // Comida normal: a cada 10 unidades = +1 level
+      _foodForLevel += amount;
+      while (_foodForLevel >= 10) {
+        _foodForLevel -= 10;
+        _gainLevel();
+      }
+    }
+  }
+
+  void _gainLevel() {
+    level++;
+    levelUpTimer = 2.0; // exibe badge "LEVEL UP!" por 2 segundos
+    HapticService.instance.boost();
+  }
+
   void registerKill() {
     kills++;
+    _killsForLevel++;
+    if (_killsForLevel >= 1) {
+      // 1 kill = +1 level
+      _killsForLevel = 0;
+      _gainLevel();
+    }
     HapticService.instance.kill();
   }
 
@@ -325,6 +373,12 @@ class SnakePlayer extends Component
     _tongueTimer = 0;
     _growAccum = 0;
     _isAlive = true;
+    // Reset do sistema de level
+    level = 1;
+    _starsForLevel = 0;
+    _foodForLevel = 0;
+    _killsForLevel = 0;
+    levelUpTimer = 0.0;
     for (int i = 0; i < kPlayerInitialSegments + 4; i++) {
       _segments.add(pos - Vector2(kPlayerSegmentSpacing * i, 0));
     }
