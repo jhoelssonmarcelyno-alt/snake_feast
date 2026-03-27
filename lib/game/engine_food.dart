@@ -34,8 +34,8 @@ extension EngineFood on SnakeEngine {
   }
 
   void spawnCommonFood(int count) {
-    // ✅ Bloqueio inicial (caso o jogo comece/reinicie em tempo avançado)
-    if (battleTimer <= 60) return;
+    // ✅ Bloqueio: sem spawn nos últimos 90 segundos
+    if (battleTimer <= 90) return;
 
     for (int i = 0; i < count; i++) {
       foods.add(Food.common(position: _randomSafePosition()));
@@ -43,8 +43,8 @@ extension EngineFood on SnakeEngine {
   }
 
   void spawnStars() {
-    // ✅ REGRA: Estrelas param de nascer após 1 minuto
-    if (battleTimer <= 60) return;
+    // ✅ REGRA: Estrelas param de nascer nos últimos 90 segundos
+    if (battleTimer <= 90) return;
 
     final int count =
         (foods.where((f) => f.type == FoodType.common).length * 0.10)
@@ -55,13 +55,21 @@ extension EngineFood on SnakeEngine {
     }
   }
 
-  // ── Consome uma comida e repõe apenas se dentro do limite e tempo ────
+  // ── Consome uma comida (APENAS remove da lista e repõe se necessário) ──
+  //
+  // ✅ FIX IMPORTANTE: consumeFood NÃO chama snake.grow() aqui.
+  //    O grow() é chamado diretamente por quem detecta a colisão
+  //    (_checkFoodCollisions no player e no bot), evitando double-grow.
+  //    Esta função é responsável APENAS por:
+  //      1. Remover a comida da lista global
+  //      2. Decidir se deve repor nova comida
+  //
   void consumeFood(Food food, dynamic snake) {
     if (!foods.contains(food)) return;
     foods.remove(food);
 
-    // ✅ REGRA: Se faltar 1 minuto ou menos, NUNCA repõe comida ou estrela
-    if (battleTimer <= 60) return;
+    // ✅ REGRA: Nos últimos 90 segundos, NUNCA repõe comida ou estrela
+    if (battleTimer <= 90) return;
 
     final commonCount = foods.where((f) => f.type == FoodType.common).length;
 
@@ -71,15 +79,14 @@ extension EngineFood on SnakeEngine {
       }
     } else if (food.type == FoodType.star) {
       Future.delayed(const Duration(seconds: 8), () {
-        // Double check no tempo após o delay do Future
-        if (battleTimer > 60) {
+        if (battleTimer > 90) {
           foods.add(Food.star(position: _randomSafePosition()));
         }
       });
     }
   }
 
-  // ── Explosão de cobra — CONTINUA FUNCIONANDO (SEM TRAVA DE TEMPO) ──
+  // ── Explosão de cobra (sem trava de tempo) ────────────────────
   void explodeSnake(List<Vector2> segments, Color color) {
     final int total = segments.length;
     final int count = total.clamp(8, 60);
@@ -97,7 +104,6 @@ extension EngineFood on SnakeEngine {
         if (distSq > zoneRadius * zoneRadius) continue;
       }
 
-      // ✅ Aqui não tem trava: as cobras ainda deixam massa ao morrer
       foods.add(Food.botMass(position: pos, segmentColor: color));
     }
   }
@@ -115,10 +121,9 @@ extension EngineFood on SnakeEngine {
     const double speed = 200.0;
 
     for (final food in foods) {
-      // ✅ O ímã continua funcionando para massa de bot também se você quiser,
-      // mas aqui está filtrado para 'common'. Para atrair tudo, remova a linha abaixo:
-      if (food.type != FoodType.common && food.type != FoodType.botMass)
+      if (food.type != FoodType.common && food.type != FoodType.botMass) {
         continue;
+      }
 
       final dx = head.x - food.position.x;
       final dy = head.y - food.position.y;
@@ -133,6 +138,7 @@ extension EngineFood on SnakeEngine {
   }
 
   void updateFoods(double dt) {
+    // For-in simples para atualizar as animações (pulso/rotação)
     for (final food in foods) {
       food.update(dt);
     }

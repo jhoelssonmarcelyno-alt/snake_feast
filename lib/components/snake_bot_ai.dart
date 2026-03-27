@@ -1,13 +1,10 @@
 // lib/components/snake_bot_ai.dart
 import 'dart:math';
-import 'package:flame/components.dart' show Vector2;
 import 'package:flame/extensions.dart';
 import 'food.dart';
 import 'snake_bot.dart';
 import 'bot/bot_state.dart';
-import '../game/snake_engine.dart';
-import '../game/engine_zone.dart';
-import '../utils/constants.dart'; // necessário para kPlayerMinSegments
+import '../utils/constants.dart';
 
 enum BotPersonalityType { aggressive, wanderer, foodie }
 
@@ -16,16 +13,26 @@ enum _BotState { hunt, flee, explore }
 mixin BotAI on BotState {
   SnakeBot get _bot => this as SnakeBot;
 
-  // ── Configurações da IA ────────────────────────────────────────
-  static const double _aiInterval = 0.08;
-  static const double _visionRadius = 1400.0;
-  static const double _fleeRadius = 220.0;
-  static const double _wallMargin = 400.0;
-  static const double _zoneMargin = 350.0;
+  final Vector2 _headPos = Vector2.zero();
+  final Vector2 _diff = Vector2.zero();
+  final Vector2 _force = Vector2.zero();
 
-  // ── Configurações de caça ──────────────────────────────────────
-  static const double _huntRadius = 600.0; // raio de detecção de presa
-  static const int _huntSizeLead = 8; // segmentos de vantagem mínima para caçar
+  // ── Intervalos e raios ────────────────────────────────────────────────────
+  static const double _aiInterval = 0.08;
+  static const double _visionRadiusSq = 1400.0 * 1400.0;
+  static const double _fleeRadius = 300.0; // Aumentado para detecção antecipada
+  static const double _wallMargin = 300.0;
+  static const double _zoneMargin = 1200.0;
+  static const double _zoneBoostThr = 0.45;
+
+  // Raios de caça
+  static const double _huntRadiusSq = 900.0 * 900.0;
+  static const double _aggressiveHuntRadiusSq = 1600.0 * 1600.0;
+  static const double _killZoneRadiusSq = 350.0 * 350.0;
+  static const int _huntSizeLead = 5;
+
+  /// Tempo restante (segundos) abaixo do qual a fase de caça se ativa.
+  static const double _huntPhaseThreshold = 120.0;
 
   _BotState _state = _BotState.explore;
   double _stateTimer = 0;
@@ -35,7 +42,6 @@ mixin BotAI on BotState {
 
   void tickAI(double dt) {
     if (!_bot.isAlive || _bot.segments.isEmpty) return;
-
     _aiTimer += dt;
     _stateTimer += dt;
     _exploreTargetTimer -= dt;
@@ -46,195 +52,207 @@ mixin BotAI on BotState {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Decisão principal - Ordem de Prioridade Alterada para Sobrevivência
+  // ─────────────────────────────────────────────────────────────────────────
   void _decide() {
-    final head = _bot.segments.first;
-    final world = _bot.engine.worldSize;
+    if (_bot.segments.isEmpty) return;
+    _headPos.setFrom(_bot.segments.first);
 
-    // 1. ✅ Fuga da zona de perigo (prioridade máxima)
-    final zoneForce = _zoneForce(head);
-    if (zoneForce != null) {
-      _bot.botTargetDirection =
-          (_bot.botTargetDirection * 0.05 + zoneForce * 0.95).normalized();
-      _bot.isBoosting = false;
-      _state = _BotState.flee;
-      _stateTimer = 0;
-      return;
-    }
+    final engine = _bot.engine;
+    final world = engine.worldSize;
 
-    // 2. Evitar Paredes
-    final wallForce = _wallForce(head, world);
-    if (wallForce != null) {
-      _bot.botTargetDirection =
-          (_bot.botTargetDirection * 0.1 + wallForce * 0.9).normalized();
-      _bot.isBoosting = false;
-      _state = _BotState.flee;
-      return;
-    }
+    // ── Prioridade 1: Zona de Batalha (Morte certa) ────────────────────────
+    if (_applyZoneForce()) return;
 
-    // 3. Perigo de colisão
-    final danger = _dangerForce(head);
-    if (danger != null) {
-      _bot.botTargetDirection =
-          (_bot.botTargetDirection * 0.2 + danger * 0.8).normalized();
-      _bot.isBoosting = false;
-      _state = _BotState.flee;
-      _stateTimer = 0;
-      return;
-    }
+    // ── Prioridade 2: Paredes (Morte certa) ────────────────────────────────
+    if (_applyWallForce(world)) return;
 
-    if (_state == _BotState.flee && _stateTimer < 0.25) return;
+    // ── Prioridade 3: Fugir de cobras maiores (Sobrevivência) ──────────────
+    // Agora o bot checa se precisa fugir ANTES de pensar em comer.
+    if (_applyDangerForce()) return;
 
-    // 4. ✅ Caça — prioridade sobre comida se houver presa próxima
-    if (_bot.length > 25) {
-      final preyPos = _findPrey(head);
-      if (preyPos != null) {
-        final toPrey = (preyPos - head).normalized();
-        _bot.botTargetDirection =
-            (_bot.botTargetDirection * 0.15 + toPrey * 0.85).normalized();
-        // Boost apenas se tiver segmentos suficientes para não morrer de fome
-        _bot.isBoosting = _bot.segments.length > kPlayerMinSegments + 10;
-        _state = _BotState.hunt;
+    // ── Prioridade 4: Determina fase de busca (Caça ou Comida) ─────────────
+    final bool isHuntPhase = engine.battleTimer <= _huntPhaseThreshold;
+
+    if (isHuntPhase) {
+      // FASE CAÇA: Procura presas menores
+      final prey = _findPrey(radiusSq: _aggressiveHuntRadiusSq);
+      if (prey != null) {
+        _attackPrey(prey);
         return;
       }
     }
 
-    // Para de dar boost quando não está caçando
-    _bot.isBoosting = false;
-
-    // 5. Comida — só busca comida dentro da zona segura
-    final food = _bestFood(head);
+    // FASE COMIDA / Fallback da Caça
+    final food = _bestFood();
     if (food != null) {
-      final toFood = (food.position - head).normalized();
-      _bot.botTargetDirection =
-          (_bot.botTargetDirection * 0.3 + toFood * 0.7).normalized();
-      _state = _BotState.hunt;
+      _seekFood(food);
       return;
     }
 
-    _state = _BotState.explore;
-    _doExplore(head, world);
-  }
-
-  // ✅ Força que empurra o bot para dentro da zona de perigo
-  Vector2? _zoneForce(Vector2 head) {
-    final engine = _bot.engine;
-    if (!engine.battleActive) return null;
-
-    final center = engine.zoneCenter;
-    final radius = engine.zoneRadius;
-    final dist = head.distanceTo(center);
-
-    if (dist < radius - _zoneMargin) return null;
-
-    final toCenter = (center - head).normalized();
-    final urgency =
-        ((dist - (radius - _zoneMargin)) / _zoneMargin).clamp(0.0, 1.0);
-    return toCenter * urgency;
-  }
-
-  void _doExplore(Vector2 head, Vector2 world) {
-    final bool needNew = _exploreTarget == null ||
-        _exploreTargetTimer <= 0 ||
-        head.distanceTo(_exploreTarget!) < 300;
-
-    if (needNew) {
-      _exploreTarget = _pickExploreTarget(head, world);
-      _exploreTargetTimer = 4.0 + _bot.rng.nextDouble() * 4.0;
-    }
-
-    if (_exploreTarget != null) {
-      final toTarget = (_exploreTarget! - head).normalized();
-      _bot.botTargetDirection =
-          (_bot.botTargetDirection * 0.2 + toTarget * 0.8).normalized();
-    }
-  }
-
-  // ✅ Explore target sempre dentro da zona segura
-  Vector2 _pickExploreTarget(Vector2 head, Vector2 world) {
-    final engine = _bot.engine;
-
-    if (engine.battleActive) {
-      final center = engine.zoneCenter;
-      final safeRadius =
-          (engine.zoneRadius - _zoneMargin * 0.5).clamp(100.0, double.infinity);
-      final angle = _bot.rng.nextDouble() * pi * 2;
-      final dist = _bot.rng.nextDouble() * safeRadius;
-      return Vector2(
-        center.x + cos(angle) * dist,
-        center.y + sin(angle) * dist,
-      );
-    }
-
-    return Vector2(
-      _bot.rng.nextDouble() * world.x,
-      _bot.rng.nextDouble() * world.y,
-    );
-  }
-
-  Vector2? _wallForce(Vector2 head, Vector2 world) {
-    Vector2 push = Vector2.zero();
-    bool near = false;
-
-    if (head.x < _wallMargin) {
-      push.x = 1;
-      near = true;
-    } else if (head.x > world.x - _wallMargin) {
-      push.x = -1;
-      near = true;
-    }
-
-    if (head.y < _wallMargin) {
-      push.y = 1;
-      near = true;
-    } else if (head.y > world.y - _wallMargin) {
-      push.y = -1;
-      near = true;
-    }
-
-    return near ? push.normalized() : null;
-  }
-
-  Vector2? _dangerForce(Vector2 head) {
-    Vector2 force = Vector2.zero();
-    bool found = false;
-    final double dangerR = _fleeRadius + (_bot.length * 0.5);
-
-    void pushFrom(Vector2 pos, double multiplier) {
-      final double d = head.distanceTo(pos);
-      if (d < dangerR && d > 1) {
-        force += (head - pos).normalized() * (1.0 - d / dangerR) * multiplier;
-        found = true;
+    // Se não houver comida nem presas, caça oportunista (se estiver perto)
+    if (!isHuntPhase) {
+      final prey = _findPrey(radiusSq: _huntRadiusSq);
+      if (prey != null) {
+        _attackPrey(prey);
+        return;
       }
     }
 
-    if (_bot.engine.player.isAlive) {
-      pushFrom(_bot.engine.player.segments.first, 6.0);
-    }
-
-    for (final bot in _bot.engine.bots) {
-      if (bot == _bot || !bot.isAlive) continue;
-      pushFrom(bot.segments.first, 4.0);
-    }
-
-    return found ? force.normalized() : null;
+    // ── Fallback final: Exploração ─────────────────────────────────────────
+    _bot.isBoosting = false;
+    _state = _BotState.explore;
+    _doExplore(world);
   }
 
-  Food? _bestFood(Vector2 head) {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Força de Perigo (Fuga de Maiores)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  bool _applyDangerForce() {
+    _force.setZero();
+    bool foundThreat = false;
+    double closestDistSq = double.infinity;
+
+    // Distância de fuga baseada no tamanho do bot (quanto maior o bot, mais longe ele percebe)
+    final double currentFleeRadius = _fleeRadius + (_bot.length * 0.5);
+    final double dangerRSq = currentFleeRadius * currentFleeRadius;
+
+    void checkThreat(Vector2 otherHead, int otherLength) {
+      // Só considera ameaça se a outra cobra for maior que o bot atual
+      // (Damos uma margem de 1 segmento para evitar fugas desnecessárias por igualdade)
+      if (otherLength <= _bot.length + 1) return;
+
+      final double distSq = _headPos.distanceToSquared(otherHead);
+      if (distSq < dangerRSq) {
+        _diff.setFrom(_headPos);
+        _diff.sub(otherHead); // Vetor que aponta para longe da ameaça
+
+        // Peso da fuga aumenta quanto mais perto a ameaça está
+        double weight =
+            (1.0 - (sqrt(distSq) / currentFleeRadius)).clamp(0.0, 1.0);
+        _diff.normalize();
+        _diff.scale(weight * 10.0); // Multiplicador de força de fuga
+
+        _force.add(_diff);
+        foundThreat = true;
+        if (distSq < closestDistSq) closestDistSq = distSq;
+      }
+    }
+
+    // Checar o jogador
+    final p = _bot.engine.player;
+    if (p.isAlive && p.segments.isNotEmpty) {
+      checkThreat(p.segments.first, p.length);
+    }
+
+    // Checar outros bots
+    for (final other in _bot.engine.bots) {
+      if (other == _bot || !other.isAlive || other.segments.isEmpty) continue;
+      checkThreat(other.segments.first, other.length);
+    }
+
+    if (foundThreat) {
+      _force.normalize();
+      // Aplica a direção de fuga suavemente para não parecer robótico demais
+      _bot.botTargetDirection.lerp(_force, 0.85);
+
+      // LOGICA DE BOOST: Se a cobra maior estiver muito perto, o bot "se assusta" e acelera
+      // (Só usa boost se tiver tamanho suficiente para não morrer sumindo)
+      if (closestDistSq < (150 * 150) && _bot.length > kPlayerMinSegments + 2) {
+        _bot.isBoosting = true;
+      } else {
+        _bot.isBoosting = false;
+      }
+
+      _state = _BotState.flee;
+      _stateTimer = 0;
+      return true;
+    }
+    return false;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Demais funções (Zone, Wall, Food, Prey, Explore) - Mantidas e Otimizadas
+  // ─────────────────────────────────────────────────────────────────────────
+
+  bool _applyZoneForce() {
+    final engine = _bot.engine;
+    if (!engine.battleActive) return false;
+
+    final center = engine.zoneCenter;
+    final radius = engine.zoneRadius;
+    final dist = _headPos.distanceTo(center);
+
+    if (dist < radius - _zoneMargin) return false;
+
+    _diff.setFrom(center);
+    _diff.sub(_headPos);
+    _diff.normalize();
+
+    final double urgency =
+        ((dist - (radius - _zoneMargin)) / _zoneMargin).clamp(0.0, 1.0);
+
+    if (urgency >= 0.75) {
+      _bot.botTargetDirection.setFrom(_diff);
+    } else {
+      _bot.botTargetDirection.lerp(_diff, 0.7 + urgency * 0.3);
+    }
+
+    _bot.isBoosting = urgency >= _zoneBoostThr;
+    _state = _BotState.flee;
+    _stateTimer = 0;
+    return true;
+  }
+
+  bool _applyWallForce(Vector2 world) {
+    _force.setZero();
+    bool near = false;
+
+    if (_headPos.x < _wallMargin) {
+      _force.x = 1;
+      near = true;
+    } else if (_headPos.x > world.x - _wallMargin) {
+      _force.x = -1;
+      near = true;
+    }
+
+    if (_headPos.y < _wallMargin) {
+      _force.y = 1;
+      near = true;
+    } else if (_headPos.y > world.y - _wallMargin) {
+      _force.y = -1;
+      near = true;
+    }
+
+    if (near) {
+      _force.normalize();
+      _bot.botTargetDirection.lerp(_force, 0.9);
+      _bot.isBoosting = false;
+      _state = _BotState.flee;
+      return true;
+    }
+    return false;
+  }
+
+  Food? _bestFood() {
     Food? best;
     double maxScore = -1;
     final engine = _bot.engine;
 
     for (final food in engine.foods) {
-      final double d = head.distanceTo(food.position);
-      if (d > _visionRadius) continue;
+      final double dSq = _headPos.distanceToSquared(food.position);
+      if (dSq > _visionRadiusSq) continue;
 
-      // ✅ Ignora comida fora da zona quando a zona está ativa
       if (engine.battleActive) {
-        final distToCenter = food.position.distanceTo(engine.zoneCenter);
-        if (distToCenter > engine.zoneRadius) continue;
+        final distToCenterSq =
+            food.position.distanceToSquared(engine.zoneCenter);
+        final r = engine.zoneRadius;
+        if (distToCenterSq > r * r) continue;
       }
 
-      final double score = food.value / (d + 1);
+      final double score = food.value / (sqrt(dSq) + 1);
       if (score > maxScore) {
         maxScore = score;
         best = food;
@@ -243,36 +261,79 @@ mixin BotAI on BotState {
     return best;
   }
 
-  // ✅ Caça bots menores E o player se for menor
-  Vector2? _findPrey(Vector2 head) {
-    Vector2? bestPrey;
-    double bestDist = double.infinity;
+  void _seekFood(Food food) {
+    _diff.setFrom(food.position);
+    _diff.sub(_headPos);
+    _diff.normalize();
+    _bot.botTargetDirection.lerp(_diff, 0.7);
+    _bot.isBoosting = false;
+    _state = _BotState.hunt;
+  }
 
-    // Verifica bots menores
-    for (final bot in _bot.engine.bots) {
-      if (bot == _bot || !bot.isAlive || bot.segments.isEmpty) continue;
-      // Só caça se for significativamente maior
-      if (bot.length + _huntSizeLead > _bot.length) continue;
+  Vector2? _findPrey({required double radiusSq}) {
+    Vector2? bestPos;
+    double bestDistSq = double.infinity;
 
-      final dist = head.distanceTo(bot.segments.first);
-      if (dist < _huntRadius && dist < bestDist) {
-        bestDist = dist;
-        bestPrey = bot.segments.first;
+    void check(bool isAlive, List<dynamic> segs, int len) {
+      if (!isAlive || segs.isEmpty) return;
+      if (len + _huntSizeLead > _bot.length) return;
+      final Vector2 head = segs.first as Vector2;
+      final double dSq = _headPos.distanceToSquared(head);
+      if (dSq < radiusSq && dSq < bestDistSq) {
+        bestDistSq = dSq;
+        bestPos = head;
       }
     }
 
-    // Verifica o player se for menor
-    final player = _bot.engine.player;
-    if (player.isAlive && player.segments.isNotEmpty) {
-      if (player.length + _huntSizeLead <= _bot.length) {
-        final dist = head.distanceTo(player.segments.first);
-        if (dist < _huntRadius && dist < bestDist) {
-          bestDist = dist;
-          bestPrey = player.segments.first;
-        }
-      }
+    for (final b in _bot.engine.bots) {
+      if (b == _bot) continue;
+      check(b.isAlive, b.segments, b.length);
     }
+    final p = _bot.engine.player;
+    check(p.isAlive, p.segments, p.length);
 
-    return bestPrey;
+    return bestPos;
+  }
+
+  void _attackPrey(Vector2 preyPos) {
+    _diff.setFrom(preyPos);
+    _diff.sub(_headPos);
+    final double distSq = _diff.length2;
+    _diff.normalize();
+
+    final double precision = distSq < _killZoneRadiusSq ? 0.95 : 0.75;
+    _bot.botTargetDirection.lerp(_diff, precision);
+
+    _bot.isBoosting =
+        distSq < _killZoneRadiusSq && _bot.length > kPlayerMinSegments + 5;
+    _state = _BotState.hunt;
+  }
+
+  void _doExplore(Vector2 world) {
+    if (_exploreTarget == null || _exploreTargetTimer <= 0) {
+      _exploreTarget = _pickExploreTarget(world);
+      _exploreTargetTimer = 4.0 + _bot.rng.nextDouble() * 4.0;
+    }
+    if (_exploreTarget != null) {
+      _diff.setFrom(_exploreTarget!);
+      _diff.sub(_headPos);
+      _diff.normalize();
+      _bot.botTargetDirection.lerp(_diff, 0.6);
+    }
+  }
+
+  Vector2 _pickExploreTarget(Vector2 world) {
+    final engine = _bot.engine;
+    if (engine.battleActive) {
+      final center = engine.zoneCenter;
+      final safeRadius =
+          (engine.zoneRadius - _zoneMargin * 1.2).clamp(80.0, double.infinity);
+      final double angle = _bot.rng.nextDouble() * pi * 2;
+      final double dist = _bot.rng.nextDouble() * safeRadius;
+      return Vector2(
+          center.x + cos(angle) * dist, center.y + sin(angle) * dist);
+    }
+    return Vector2(
+        _bot.rng.nextDouble() * world.x, _bot.rng.nextDouble() * world.y);
   }
 }

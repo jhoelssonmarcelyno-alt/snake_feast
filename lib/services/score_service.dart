@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/constants.dart';
 import 'rank_system.dart';
 import 'xp_reward.dart';
+import 'package:flutter/material.dart';
 
 class ScoreService {
   ScoreService._();
@@ -10,6 +11,15 @@ class ScoreService {
   late SharedPreferences _prefs;
   bool _ready = false;
 
+  // ─── PONTUAÇÃO EM TEMPO REAL (RAM) ──────────────────────────
+  int _currentScore = 0;
+  int get currentScore => _currentScore;
+
+  // ✅ O MÉTODO QUE VAI MATAR O ÚLTIMO ERRO:
+  void resetCurrentScore() => _currentScore = 0;
+
+  void addPoints(int amount) => _currentScore += amount;
+
   /// Inicializa o serviço de persistência
   Future<void> init() async {
     if (_ready) return;
@@ -17,11 +27,22 @@ class ScoreService {
     _ready = true;
   }
 
-  // ─── High Score ───────────────────────────────────────────────
+  // ─── PROGRESSO DE NÍVEL ───────────────────────────────────────
+
+  int get currentLevel => _prefs.getInt('current_level') ?? 1;
+
+  Future<void> unlockNextLevel() async {
+    await _prefs.setInt('current_level', currentLevel + 1);
+  }
+
+  Future<void> setCurrentLevel(int level) async {
+    await _prefs.setInt('current_level', level);
+  }
+
+  // ─── HIGH SCORE ───────────────────────────────────────────────
 
   int get highScore => _prefs.getInt(kPrefHighScore) ?? 0;
 
-  /// Submete o XpReward completo de uma partida e salva o recorde
   Future<XpReward> submitFullReward({
     required int score,
     required int kills,
@@ -29,6 +50,9 @@ class ScoreService {
     required double secondsAlive,
     required bool isVictory,
   }) async {
+    // Atualiza o score antes de calcular
+    _currentScore = score;
+
     final reward = RankSystem.calculateReward(
       score: score,
       kills: kills,
@@ -40,6 +64,10 @@ class ScoreService {
 
     await addXP(reward.total);
 
+    if (isVictory && level == currentLevel) {
+      await unlockNextLevel();
+    }
+
     if (score > highScore) {
       await _prefs.setInt(kPrefHighScore, score);
     }
@@ -48,7 +76,7 @@ class ScoreService {
     return reward;
   }
 
-  // ─── XP e Patente ─────────────────────────────────────────────
+  // ─── XP E PATENTE ─────────────────────────────────────────────
 
   int get totalXP => _prefs.getInt('total_xp') ?? 0;
 
@@ -64,7 +92,7 @@ class ScoreService {
   XpReward? _lastXpReward;
   XpReward? get lastXpReward => _lastXpReward;
 
-  // ─── Identidade do Player ─────────────────────────────────────
+  // ─── IDENTIDADE DO PLAYER ─────────────────────────────────────
 
   String get playerName {
     final n = _prefs.getString('player_name') ?? 'Você';
@@ -76,7 +104,7 @@ class ScoreService {
     await _prefs.setString('player_name', clean);
   }
 
-  // ─── Economia (Moedas e Diamantes) ────────────────────────────
+  // ─── ECONOMIA (MOEDAS E DIAMANTES) ────────────────────────────
 
   int get coins => _prefs.getInt('coins') ?? 0;
   int get diamonds => _prefs.getInt('diamonds') ?? 0;
@@ -103,7 +131,7 @@ class ScoreService {
     return true;
   }
 
-  // ─── Boost Extra ──────────────────────────────────────────────
+  // ─── BOOST EXTRA ──────────────────────────────────────────────
 
   int get extraBoosts => _prefs.getInt('extra_boosts') ?? 0;
 
@@ -118,7 +146,7 @@ class ScoreService {
     return true;
   }
 
-  // ─── Customização (Skins e Cosméticos) ────────────────────────
+  // ─── CUSTOMIZAÇÃO (SKINS E COSMÉTICOS) ────────────────────────
 
   int get selectedSkinIndex {
     final idx = _prefs.getInt(kPrefSelectedSkin) ?? 0;
@@ -129,7 +157,6 @@ class ScoreService {
     await _prefs.setInt(kPrefSelectedSkin, index);
   }
 
-  /// Getter para retornar o objeto da skin selecionada (corrige erro no lobby/shop)
   SnakeSkin get selectedSkin => kPlayerSkins[selectedSkinIndex];
 
   List<String> get unlockedSkins =>
@@ -149,7 +176,7 @@ class ScoreService {
     return unlockedSkins.contains(id);
   }
 
-  // ─── Itens Cosméticos (Chapéus, etc) ──────────────────────────
+  // ─── ITENS COSMÉTICOS (CHAPÉUS, ETC) ──────────────────────────
 
   List<String> get unlockedCosmetics =>
       _prefs.getStringList('unlocked_cosmetics') ?? [];
@@ -164,7 +191,7 @@ class ScoreService {
 
   bool isCosmeticUnlocked(String id) => unlockedCosmetics.contains(id);
 
-  // ─── Itens Consumíveis e Revives ──────────────────────────────
+  // ─── ITENS CONSUMÍVEIS E REVIVES ──────────────────────────────
 
   int get revives => _prefs.getInt('revives') ?? 0;
   int get revivesBought => _prefs.getInt('revives_bought') ?? 0;
@@ -186,11 +213,12 @@ class ScoreService {
     return true;
   }
 
-  // ─── Ranking Local (Top 10) ───────────────────────────────────
+  // ─── RANKING LOCAL (TOP 10) ───────────────────────────────────
 
   static const String _kRankingKey = 'local_ranking_v2';
 
   List<Map<String, dynamic>> getLocalRanking() {
+    if (!_ready) return [];
     final raw = _prefs.getString(_kRankingKey) ?? '';
     if (raw.isEmpty) return [];
 

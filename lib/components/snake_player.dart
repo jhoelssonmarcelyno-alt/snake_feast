@@ -1,6 +1,6 @@
 import 'dart:ui';
 import 'package:flame/events.dart';
-import 'package:flutter/foundation.dart'; // NECESSÁRIO PARA VALUENOTIFIER
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart'
     show
         Colors,
@@ -10,6 +10,7 @@ import 'package:flutter/material.dart'
         TextSpan,
         TextStyle,
         TextDirection,
+        FontWeight,
         Shadow;
 import '../game/snake_engine.dart';
 import '../game/engine_food.dart';
@@ -24,7 +25,11 @@ import 'package:flame/components.dart';
 
 class SnakePlayer extends Component
     with DragCallbacks, PlayerExpressions, PlayerRenderer {
-  // ── Skin ─────────────────────────────────────────────────────
+  // ── OTIMIZAÇÃO: Variáveis de Reuso (Zero Alocação no Loop) ──
+  final Vector2 _tempHead = Vector2.zero();
+  final Vector2 _moveDelta = Vector2.zero();
+
+  double speed = 150.0;
   SnakeSkin skin;
 
   // ── PlayerExpressions overrides ──────────────────────────────
@@ -82,11 +87,9 @@ class SnakePlayer extends Component
   double _tongueTimer = 0.0;
   bool _isAlive = true;
 
-  // CORREÇÃO PARA O HUD: Usando ValueNotifier
   final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> killsNotifier = ValueNotifier<int>(0);
 
-  // Getters e Setters para não quebrar as funções existentes
   int get score => scoreNotifier.value;
   set score(int value) => scoreNotifier.value = value;
 
@@ -96,20 +99,17 @@ class SnakePlayer extends Component
   int foodEaten = 0;
   int _coinsEarned = 0;
   int _diamondsEarned = 0;
-
-  // ── Acumula pontos antes de crescer — 1 segmento a cada 10 pontos ──
   int _growAccum = 0;
 
-  // ── Sistema de Level ─────────────────────────────────────────
   int level = 1;
-  int _starsForLevel = 0; // estrelas acumuladas (food.value >= 5)
-  int _foodForLevel = 0; // comidas normais acumuladas
-  int _killsForLevel = 0; // kills acumuladas (1 kill = +1 level)
-  double levelUpTimer = 0.0; // quando > 0 exibe badge "LEVEL UP!" na tela
+  int _starsForLevel = 0;
+  int _foodForLevel = 0;
+  int _killsForLevel = 0;
+  double levelUpTimer = 0.0;
 
   String name = 'Você';
 
-  // ── Paints ───────────────────────────────────────────────────
+  // ── Paints (Pré-alocados) ────────────────────────────────────
   final Paint _bodyPaint = Paint();
   final Paint _headPaint = Paint();
   final Paint _shadowPaint = Paint()..color = const Color(0x33000000);
@@ -127,7 +127,6 @@ class SnakePlayer extends Component
   SnakePlayer({required SnakeEngine engine, required this.skin})
       : _engine = engine;
 
-  // ── Lifecycle ────────────────────────────────────────────────
   @override
   Future<void> onLoad() async {
     await super.onLoad();
@@ -164,8 +163,9 @@ class SnakePlayer extends Component
 
   void _spawnAt(Vector2 pos) {
     _segments.clear();
-    _direction = _targetDirection = Vector2(1, 0);
-    score = kills = foodEaten = 0; // Isso atualiza os Notifiers automaticamente
+    _direction.setValues(1, 0);
+    _targetDirection.setValues(1, 0);
+    score = kills = foodEaten = 0;
     _coinsEarned = 0;
     _diamondsEarned = 0;
     _growAccum = 0;
@@ -173,7 +173,6 @@ class SnakePlayer extends Component
     _boostDrainAccum = 0;
     _tongueTimer = 0;
     _isAlive = true;
-    // Reset do sistema de level
     level = 1;
     _starsForLevel = 0;
     _foodForLevel = 0;
@@ -187,6 +186,7 @@ class SnakePlayer extends Component
   // ── DragCallbacks ────────────────────────────────────────────
   @override
   bool onDragStart(DragStartEvent event) {
+    super.onDragStart(event);
     _activeTouchId = event.pointerId;
     _joystickOrigin = event.canvasPosition.clone();
     _joystickCurrent = event.canvasPosition.clone();
@@ -195,6 +195,7 @@ class SnakePlayer extends Component
 
   @override
   bool onDragUpdate(DragUpdateEvent event) {
+    super.onDragUpdate(event);
     if (event.pointerId == _activeTouchId) {
       _joystickCurrent = event.canvasEndPosition.clone();
     }
@@ -203,6 +204,7 @@ class SnakePlayer extends Component
 
   @override
   bool onDragEnd(DragEndEvent event) {
+    super.onDragEnd(event);
     if (event.pointerId == _activeTouchId) {
       _joystickOrigin = _joystickCurrent = null;
       _activeTouchId = null;
@@ -212,12 +214,12 @@ class SnakePlayer extends Component
 
   @override
   bool onDragCancel(DragCancelEvent event) {
+    super.onDragCancel(event);
     _joystickOrigin = _joystickCurrent = null;
     _activeTouchId = null;
     return true;
   }
 
-  // ── API HUD ──────────────────────────────────────────────────
   void setJoystick(Offset origin, Offset current) {
     _joystickOrigin = Vector2(origin.dx, origin.dy);
     _joystickCurrent = Vector2(current.dx, current.dy);
@@ -238,12 +240,10 @@ class SnakePlayer extends Component
     }
   }
 
-  // ── Update ───────────────────────────────────────────────────
   @override
   void update(double dt) {
     if (!_isAlive) return;
     _tongueTimer += dt;
-    // Decrementa timer do badge "LEVEL UP!"
     if (levelUpTimer > 0) levelUpTimer = (levelUpTimer - dt).clamp(0.0, 10.0);
     _updateTargetFromJoystick();
     _updateDirection(dt);
@@ -256,27 +256,34 @@ class SnakePlayer extends Component
     if (_joystickOrigin == null || _joystickCurrent == null) return;
     final Vector2 delta = _joystickCurrent! - _joystickOrigin!;
     if (delta.length < kJoystickDeadzone) return;
-    _targetDirection = delta.normalized();
+    _targetDirection.setFrom(delta.normalized());
   }
 
   void _updateDirection(double dt) {
     final double t = (kPlayerTurnLerp * dt).clamp(0.0, 1.0);
-    final Vector2 lerped = _direction.clone()..lerp(_targetDirection, t);
-    if (lerped.length2 > 0) lerped.normalize();
-    _direction = lerped;
+    _direction.lerp(_targetDirection, t);
+    if (_direction.length2 > 0) _direction.normalize();
   }
 
   void _moveSegments(double dt) {
-    final double speed = _isBoosting && _segments.length > kPlayerMinSegments
-        ? kPlayerBoostSpeed
-        : kPlayerBaseSpeed;
-    final Vector2 newHead = _segments.first + _direction * (speed * dt);
-    newHead.x = newHead.x.clamp(0.0, _engine.worldSize.x);
-    newHead.y = newHead.y.clamp(0.0, _engine.worldSize.y);
+    final double currentSpeed =
+        _isBoosting && _segments.length > kPlayerMinSegments
+            ? speed * 1.8
+            : speed;
+
+    _moveDelta.setFrom(_direction);
+    _moveDelta.scale(currentSpeed * dt);
+
+    _tempHead.setFrom(_segments.first);
+    _tempHead.add(_moveDelta);
+
+    _tempHead.x = _tempHead.x.clamp(0.0, _engine.worldSize.x);
+    _tempHead.y = _tempHead.y.clamp(0.0, _engine.worldSize.y);
+
     for (int i = _segments.length - 1; i > 0; i--) {
-      _segments[i] = _segments[i - 1].clone();
+      _segments[i].setFrom(_segments[i - 1]);
     }
-    _segments[0] = newHead;
+    _segments[0].setFrom(_tempHead);
   }
 
   void _handleBoostDrain(double dt) {
@@ -299,16 +306,16 @@ class SnakePlayer extends Component
   void _checkFoodCollisions() {
     final Vector2 head = _segments.first;
     final double eatR = headRadius + kEatRadius;
-    for (final food in List<Food>.from(_engine.foods)) {
+    // ✅ OTIMIZAÇÃO: itera de trás pra frente sem alocar lista nova
+    for (int i = _engine.foods.length - 1; i >= 0; i--) {
+      final food = _engine.foods[i];
       if (food.position.distanceTo(head) < eatR) {
-        _engine.consumeFood(food, this);
+        _engine.consumeFood(this, food);
         grow(food.value);
         HapticService.instance.eat();
       }
     }
   }
-
-  // ── API pública ──────────────────────────────────────────────
 
   void grow(int amount) {
     score += amount;
@@ -316,7 +323,6 @@ class SnakePlayer extends Component
     _checkRewardMilestones();
     _checkLevelMilestones(amount);
 
-    // Cresce 1 segmento a cada 10 pontos acumulados
     _growAccum += amount;
     while (_growAccum >= 10) {
       _growAccum -= 10;
@@ -337,10 +343,7 @@ class SnakePlayer extends Component
     }
   }
 
-  // ── Sistema de Level ─────────────────────────────────────────
-
   void _checkLevelMilestones(int amount) {
-    // Food especial (estrela): food.value >= 5 → 2 estrelas = +1 level
     if (amount >= 5) {
       _starsForLevel++;
       if (_starsForLevel >= 2) {
@@ -348,7 +351,6 @@ class SnakePlayer extends Component
         _gainLevel();
       }
     } else {
-      // Comida normal: a cada 10 unidades = +1 level
       _foodForLevel += amount;
       while (_foodForLevel >= 10) {
         _foodForLevel -= 10;
@@ -359,7 +361,7 @@ class SnakePlayer extends Component
 
   void _gainLevel() {
     level++;
-    levelUpTimer = 2.0; // exibe badge "LEVEL UP!" por 2 segundos
+    levelUpTimer = 2.0;
     HapticService.instance.boost();
   }
 
@@ -367,7 +369,6 @@ class SnakePlayer extends Component
     kills++;
     _killsForLevel++;
     if (_killsForLevel >= 1) {
-      // 1 kill = +1 level
       _killsForLevel = 0;
       _gainLevel();
     }
@@ -375,14 +376,17 @@ class SnakePlayer extends Component
   }
 
   void revive(Vector2 pos) {
+    // ✅ CORREÇÃO: nunca revive cobra já viva — evita duplicação de segmentos
+    if (_isAlive) return;
+
     _segments.clear();
-    _direction = _targetDirection = Vector2(1, 0);
+    _direction.setValues(1, 0);
+    _targetDirection.setValues(1, 0);
     _isBoosting = false;
     _boostDrainAccum = 0;
     _tongueTimer = 0;
     _growAccum = 0;
     _isAlive = true;
-    // Reset do sistema de level
     level = 1;
     _starsForLevel = 0;
     _foodForLevel = 0;
@@ -391,6 +395,16 @@ class SnakePlayer extends Component
     for (int i = 0; i < kPlayerInitialSegments + 4; i++) {
       _segments.add(pos - Vector2(kPlayerSegmentSpacing * i, 0));
     }
+  }
+
+  /// Mata o player SEM efeitos visuais nem haptic.
+  /// Usado pelo restartGame() para zerar o estado imediatamente
+  /// antes de criar um novo player — evita cobra duplicada na tela.
+  void forceKill() {
+    if (!_isAlive) return;
+    _isAlive = false;
+    _segments.clear();
+    _isBoosting = false;
   }
 
   void die() {
@@ -411,7 +425,6 @@ class SnakePlayer extends Component
       _segments.isEmpty ? Vector2.zero() : _segments.first;
   int get length => _segments.length;
 
-  // ── Render ───────────────────────────────────────────────────
   @override
   void render(Canvas canvas) => renderPlayer(canvas);
 }

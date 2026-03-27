@@ -2,7 +2,7 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'ui/main_menu/main_menu.dart';
+import 'ui/main_menu/main_menu_overlay.dart';
 import 'game/snake_engine.dart';
 import 'utils/constants.dart';
 import 'overlays/game_over.dart';
@@ -13,7 +13,7 @@ import 'overlays/revive_overlay.dart';
 import 'overlays/shop_overlay.dart';
 import 'overlays/lobby_overlay.dart';
 import 'overlays/ranking_overlay.dart';
-import 'game/engine_win.dart'; // ✅ Certifique-se de que este arquivo existe
+import 'game/engine_win.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +31,7 @@ class SnakeFeastApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Serpent Strike', // Nome do seu projeto atual
+      title: 'Snake Feast',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
       home: const GameScreen(),
@@ -57,24 +57,38 @@ class _GameScreenState extends State<GameScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GameWidget<SnakeEngine>(
-      game: _engine,
-      overlayBuilderMap: {
-        kOverlayMainMenu: (context, game) => MainMenuOverlay(engine: game),
-        kOverlayGameOver: (context, game) => GameOverOverlay(engine: game),
-        kOverlayHud: (context, game) => HudOverlay(engine: game),
-        kOverlaySettings: (context, game) => SettingsOverlay(engine: game),
-        kOverlayPause: (context, game) => PauseOverlay(engine: game),
-        kOverlayShop: (context, game) => ShopOverlay(engine: game),
-        kOverlayRevive: (context, game) => ReviveOverlay(engine: game),
-        kOverlayLobby: (context, game) => LobbyOverlay(engine: game),
-        kOverlayRanking: (context, game) => RankingOverlay(engine: game),
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SizedBox(
+            width: constraints.maxWidth,
+            height: constraints.maxHeight,
+            child: GameWidget<SnakeEngine>(
+              game: _engine,
+              overlayBuilderMap: {
+                kOverlayMainMenu: (context, game) =>
+                    MainMenuOverlay(engine: game),
+                kOverlayGameOver: (context, game) =>
+                    GameOverOverlay(engine: game),
+                kOverlayHud: (context, game) => HudOverlay(engine: game),
+                kOverlaySettings: (context, game) =>
+                    SettingsOverlay(engine: game),
+                kOverlayPause: (context, game) => PauseOverlay(engine: game),
+                kOverlayShop: (context, game) => ShopOverlay(engine: game),
+                kOverlayRevive: (context, game) => ReviveOverlay(engine: game),
+                kOverlayLobby: (context, game) => LobbyOverlay(engine: game),
+                kOverlayRanking: (context, game) =>
+                    RankingOverlay(engine: game),
 
-        // ✅ CORREÇÃO: Registrando o WinOverlay que o erro "unknown overlay" pediu
-        // Se a constante não existir no seu constants.dart, você pode usar "WinOverlay" direto
-        'WinOverlay': (context, game) => WinOverlay(game: game),
-      },
-      initialActiveOverlays: const [kOverlayMainMenu],
+                // ✅ CORREÇÃO: Usando constante kOverlayWin (defina em constants.dart)
+                'WinOverlay': (context, game) => WinOverlay(game: game),
+              },
+              initialActiveOverlays: const [kOverlayMainMenu],
+            ),
+          );
+        },
+      ),
     );
   }
 }

@@ -1,5 +1,4 @@
 // lib/ui/main_menu/widgets/wallet_badge.dart
-// Exibe saldo de moedas e diamantes no menu principal.
 import 'package:flutter/material.dart';
 
 class WalletBadge extends StatelessWidget {
@@ -16,23 +15,24 @@ class WalletBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      top: 0,
-      left: 0,
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(top: 10, left: 14),
-          child: FadeTransition(
-            opacity: fadeAnim,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: Colors.black.withValues(alpha: 0.55),
-                border: Border.all(
-                    color: const Color(0xFFFFD600).withValues(alpha: 0.3)),
+    // REMOVEMOS O POSITIONED DAQUI
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10, left: 14),
+        child: FadeTransition(
+          opacity: fadeAnim,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: Colors.black.withValues(alpha: 0.55),
+              border: Border.all(
+                color: const Color(0xFFFFD600).withValues(alpha: 0.3),
               ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 const Icon(Icons.monetization_on_rounded,
                     color: Color(0xFFFFD600), size: 16),
                 const SizedBox(width: 5),
@@ -58,7 +58,7 @@ class WalletBadge extends StatelessWidget {
                     decoration: TextDecoration.none,
                   ),
                 ),
-              ]),
+              ],
             ),
           ),
         ),

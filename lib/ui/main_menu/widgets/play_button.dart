@@ -2,14 +2,18 @@
 import 'package:flutter/material.dart';
 
 class PlayButton extends StatefulWidget {
-  final double borderProgress; // mantido por compatibilidade
+  final double borderProgress;
   final VoidCallback onTap;
   final double scale;
+  // ✅ Largura opcional para o PlayRow controlar e evitar overflow
+  final double? overrideWidth;
+
   const PlayButton({
     super.key,
     required this.borderProgress,
     required this.onTap,
     this.scale = 1.0,
+    this.overrideWidth,
   });
 
   @override
@@ -28,8 +32,8 @@ class _PlayButtonState extends State<PlayButton>
     _pulse = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 900))
       ..repeat(reverse: true);
-    _glow = Tween<double>(begin: 6.0, end: 18.0).animate(
-        CurvedAnimation(parent: _pulse, curve: Curves.easeInOut));
+    _glow = Tween<double>(begin: 6.0, end: 18.0)
+        .animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut));
   }
 
   @override
@@ -41,7 +45,8 @@ class _PlayButtonState extends State<PlayButton>
   @override
   Widget build(BuildContext context) {
     final s = widget.scale;
-    final w = 260.0 * s;
+    // Usa overrideWidth se fornecido, senão o padrão
+    final w = widget.overrideWidth ?? 260.0 * s;
     final h = 64.0 * s;
 
     return GestureDetector(
@@ -61,7 +66,6 @@ class _PlayButtonState extends State<PlayButton>
             height: h + 8,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(40 * s),
-              // Borda laranja pulsante
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFFFF9500).withValues(alpha: 0.8),
@@ -100,14 +104,15 @@ class _PlayButtonState extends State<PlayButton>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 28 * s,
-                  shadows: [
-                    Shadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 4)
-                  ]),
+              Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 28 * s,
+                shadows: [
+                  Shadow(
+                      color: Colors.black.withValues(alpha: 0.3), blurRadius: 4)
+                ],
+              ),
               SizedBox(width: 6 * s),
               Text(
                 'JOGAR',
@@ -119,9 +124,10 @@ class _PlayButtonState extends State<PlayButton>
                   decoration: TextDecoration.none,
                   shadows: [
                     Shadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2))
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    )
                   ],
                 ),
               ),

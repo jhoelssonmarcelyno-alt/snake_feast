@@ -48,10 +48,13 @@ mixin BotRenderer {
     for (int i = segments.length - 1; i >= 1; i--) {
       final double sx = segments[i].x - cam.x;
       final double sy = segments[i].y - cam.y;
-      if (sx < -30 || sx > sw + 30 || sy < -30 || sy > sh + 30) continue;
+      // Culling dinâmico: margem = raio real do segmento + folga mínima
+      final double r = _segRadius(i, hr);
+      final double margin = r + 2;
+      if (sx < -margin || sx > sw + margin || sy < -margin || sy > sh + margin)
+        continue;
 
       final double t = 1.0 - (i / segments.length);
-      final double r = _segRadius(i, hr);
 
       _drawSegment(canvas, Offset(sx, sy), r, t);
 
@@ -62,7 +65,12 @@ mixin BotRenderer {
 
     final double hx = segments.first.x - cam.x;
     final double hy = segments.first.y - cam.y;
-    if (hx > -hr * 2 && hx < sw + hr * 2 && hy > -hr * 2 && hy < sh + hr * 2) {
+    // Margem da cabeça proporcional ao headRadius para evitar pop-in do oval
+    final double headMargin = hr * 2;
+    if (hx > -headMargin &&
+        hx < sw + headMargin &&
+        hy > -headMargin &&
+        hy < sh + headMargin) {
       renderHead(canvas, Offset(hx, hy), hr);
       renderName(canvas, Offset(hx, hy), hr);
     }
@@ -180,7 +188,8 @@ mixin BotRenderer {
     );
 
     // Narinas
-    final Paint nostril = Paint()..color = bodyColorDark.withValues(alpha: 0.75);
+    final Paint nostril = Paint()
+      ..color = bodyColorDark.withValues(alpha: 0.75);
     canvas.drawOval(
         Rect.fromCenter(
             center: Offset(hr * 0.93, -hr * 0.21),

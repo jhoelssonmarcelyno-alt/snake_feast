@@ -23,6 +23,16 @@ class SnakeBot extends Component
         BotAI,
         BotAccessoryRenderer,
         BotRenderer {
+  // ── VARIÁVEIS DE ESTADO (CORREÇÃO DOS ERROS DE "UNDEFINED") ──
+  int score = 0;
+  int foodEaten = 0;
+  int kills = 0;
+
+  // ── OTIMIZAÇÃO: Variáveis de Reuso (Zero Alocação no Loop) ──
+  final Vector2 _tempVec = Vector2.zero();
+  final Vector2 _moveDelta = Vector2.zero();
+  final Vector2 _headPos = Vector2.zero();
+
   @override
   final SnakeEngine engine;
   final int botId;
@@ -38,15 +48,30 @@ class SnakeBot extends Component
   Vector2 botDirection = Vector2(1, 0);
   Vector2 botTargetDirection = Vector2(1, 0);
   double botWanderTimer = 0.0;
+
   @override
   double accTimer = 0.0;
   final Random rng = Random();
 
   int get length => segments.length;
 
+  // ── Sistema de Level ─────────────────────
+  int level = 1;
+  double levelUpTimer = 0.0;
+  int _starsForLevel = 0;
+  int _foodForLevel = 0;
+  int _killsForLevel = 0;
+
+  // ── Crescimento com acumulador ───────────
+  int _growAccum = 0;
+  static const int _kGrowThreshold = 10;
+
   late TextPainter _namePainter;
   @override
   TextPainter get namePainter => _namePainter;
+
+  // DEPOIS
+  double difficultyOverride; // ← adicione esta linha como campo da classe
 
   SnakeBot({
     required this.botId,
@@ -55,6 +80,7 @@ class SnakeBot extends Component
     required this.bodyColor,
     required this.bodyColorDark,
     required this.personality,
+    this.difficultyOverride = 0.5, // ← adicione esta linha no construtor
   });
 
   @override
@@ -65,7 +91,6 @@ class SnakeBot extends Component
     respawn();
   }
 
-  /// ✅ Reconstrói o pintor de texto sempre que o nível muda
   void _buildNamePainter() {
     _namePainter = TextPainter(
       text: TextSpan(
@@ -87,12 +112,25 @@ class SnakeBot extends Component
   void respawn() {
     resetState();
     segments.clear();
-    level = 1; // Reinicia o nível ao nascer
+
+    // Reset total
+    score = 0;
+    foodEaten = 0;
+    kills = 0;
+    level = 1;
+    levelUpTimer = 0.0;
+    _starsForLevel = 0;
+    _foodForLevel = 0;
+    _killsForLevel = 0;
+    _growAccum = 0;
+
     _buildNamePainter();
 
-    Vector2 spawnPos = _generateValidSpawnPos();
+    final Vector2 spawnPos = _generateValidSpawnPos();
     final double angle = rng.nextDouble() * pi * 2;
-    botDirection = botTargetDirection = Vector2(cos(angle), sin(angle));
+    botDirection.setValues(cos(angle), sin(angle));
+    botTargetDirection.setFrom(botDirection);
+
     for (int i = 0; i < kBotInitialSegments; i++) {
       segments.add(spawnPos - botDirection * (kBotSegmentSpacing * i));
     }
@@ -100,10 +138,10 @@ class SnakeBot extends Component
   }
 
   Vector2 _generateValidSpawnPos() {
-    Vector2 pos;
+    _tempVec.setZero();
     int attempts = 0;
     do {
-      pos = Vector2(
+      _tempVec.setValues(
         kWorldMargin +
             rng.nextDouble() * (engine.worldSize.x - kWorldMargin * 2),
         kWorldMargin +
@@ -113,21 +151,27 @@ class SnakeBot extends Component
     } while (attempts < 20 &&
         engine.player.isAlive &&
         engine.player.segments.isNotEmpty &&
-        pos.distanceTo(engine.player.segments.first) < 800);
-    return pos;
+        _tempVec.distanceTo(engine.player.segments.first) < 800);
+    return _tempVec.clone();
   }
 
   @override
   void update(double dt) {
-    if (!isAlive) return;
+    if (!isAlive || segments.isEmpty) return;
 
     accTimer += dt;
+
+    if (levelUpTimer > 0) {
+      levelUpTimer = (levelUpTimer - dt).clamp(0.0, 10.0);
+      if (levelUpTimer == 0.0) _buildNamePainter();
+    }
+
     tickAI(dt);
     _updateBoostLogic(dt);
 
     final double t = (kBotTurnLerp * dt).clamp(0.0, 1.0);
-    botDirection =
-        (botDirection.clone()..lerp(botTargetDirection, t)).normalized();
+    botDirection.lerp(botTargetDirection, t);
+    if (botDirection.length2 > 0) botDirection.normalize();
 
     moveSegments(dt, botDirection, isBoosting, engine.worldSize);
 
@@ -140,21 +184,27 @@ class SnakeBot extends Component
       boostDrainAccum += kPlayerBoostDrain * dt;
       if (boostDrainAccum >= 1.0) {
         boostDrainAccum -= 1.0;
-        segments.removeLast();
-        _updateLevel(); // ✅ Atualiza nível se diminuir de tamanho
+        if (segments.isNotEmpty) segments.removeLast();
       }
     }
   }
 
   void _checkFoodCollisions() {
-    if (segments.isEmpty) return;
-    final head = segments.first;
-    final double er = headRadius + kEatRadius;
+    // 🛡️ ADICIONE ESTA TRAVA AQUI:
+    if (segments.isEmpty || !isAlive || engine.foods.isEmpty) return;
 
+    _headPos.setFrom(segments.first);
+    final double er = headRadius + kEatRadius;
+    final double erSq = er * er;
+
+    // Use o loop for comum, mas com uma checagem extra de segurança
     for (int i = engine.foods.length - 1; i >= 0; i--) {
+      // 🛡️ Outra trava: se o jogo resetar no meio do loop, o i pode ficar inválido
+      if (i >= engine.foods.length) continue;
+
       final food = engine.foods[i];
-      if (food.position.distanceTo(head) < er) {
-        engine.foods.removeAt(i);
+      if (food.position.distanceToSquared(_headPos) < erSq) {
+        engine.consumeFood(this, food);
         grow(food.value);
       }
     }
@@ -162,23 +212,31 @@ class SnakeBot extends Component
 
   void _checkSnakeCollisions() {
     if (segments.isEmpty || !isAlive) return;
-    final head = segments.first;
+    _headPos.setFrom(segments.first);
     final double headR = headRadius;
 
+    // Colisão com Player
     if (engine.player.isAlive) {
+      final double pHeadR = engine.player.headRadius * 0.8;
+      final double limitSq = (headR + pHeadR) * (headR + pHeadR);
+
       for (final segment in engine.player.segments) {
-        if (head.distanceTo(segment) <
-            (headR + engine.player.headRadius * 0.8)) {
+        if (_headPos.distanceToSquared(segment) < limitSq) {
           die(killedByPlayer: true);
           return;
         }
       }
     }
 
+    // Colisão com outros Bots
     for (final otherBot in engine.bots) {
       if (otherBot == this || !otherBot.isAlive) continue;
+
+      final double bHeadR = otherBot.headRadius * 0.8;
+      final double limitSq = (headR + bHeadR) * (headR + bHeadR);
+
       for (final segment in otherBot.segments) {
-        if (head.distanceTo(segment) < (headR + otherBot.headRadius * 0.8)) {
+        if (_headPos.distanceToSquared(segment) < limitSq) {
           die();
           return;
         }
@@ -188,28 +246,57 @@ class SnakeBot extends Component
 
   void grow(int amount) {
     score += amount;
-    growAccum += amount;
-    while (growAccum >= kGrowThreshold) {
-      growAccum -= kGrowThreshold;
-      segments.add(segments.last.clone());
+    foodEaten += amount;
+
+    _growAccum += amount;
+    while (_growAccum >= _kGrowThreshold) {
+      _growAccum -= _kGrowThreshold;
+      if (segments.isNotEmpty) {
+        segments.add(segments.last.clone());
+      }
     }
-    _updateLevel(); // ✅ Verifica se subiu de nível após comer
+
+    _checkLevelMilestones(amount);
   }
 
-  /// ✅ Calcula o nível baseado no tamanho e reconstrói o texto se mudar
-  void _updateLevel() {
-    // Exemplo: Nível sobe a cada 5 segmentos adicionais
-    int newLevel = (segments.length / 5).floor() + 1;
-    if (newLevel != level) {
-      level = newLevel;
-      _buildNamePainter();
+  void _checkLevelMilestones(int amount) {
+    if (amount >= 5) {
+      _starsForLevel++;
+      if (_starsForLevel >= 2) {
+        _starsForLevel = 0;
+        _gainLevel();
+      }
+    } else {
+      _foodForLevel += amount;
+      while (_foodForLevel >= 10) {
+        _foodForLevel -= 10;
+        _gainLevel();
+      }
     }
+  }
+
+  void _gainLevel() {
+    level++;
+    levelUpTimer = 2.0;
+    _buildNamePainter();
+  }
+
+  void registerKill() {
+    kills++;
+    _killsForLevel++;
+    if (_killsForLevel >= 1) {
+      _killsForLevel = 0;
+      _gainLevel();
+    }
+    // Haptic no bot é opcional, deixei para manter o padrão
+    HapticService.instance.kill();
   }
 
   void die({bool killedByPlayer = false}) {
     if (!isAlive) return;
     isAlive = false;
 
+    // Transforma corpo em comida (sem chamar removeFromParent)
     for (var i = 0; i < segments.length; i += 2) {
       engine.foods.add(Food.snakeMass(
           position: segments[i].clone(), segmentColor: bodyColor));
@@ -219,6 +306,7 @@ class SnakeBot extends Component
       engine.player.registerKill();
       HapticService.instance.kill();
     }
+
     segments.clear();
     engine.scheduleBotRespawn(this);
   }

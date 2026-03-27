@@ -1,4 +1,3 @@
-// lib/services/audio_service.dart
 import 'package:flame_audio/flame_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -26,9 +25,19 @@ class AudioService {
   double get gameVolume => _gameVolume;
   double get sfxVolume => _sfxVolume;
 
+  // ── ATALHOS PARA O MAIN_MENU (Compatibilidade) ────────────────
+  /// O menu usa 'isMuted' para o ícone de som.
+  bool get isMuted => !_menuMusicEnabled;
+
+  /// O menu chama 'toggleMute' ao clicar no ícone circular.
+  void toggleMute() {
+    setMenuMusic(!_menuMusicEnabled);
+  }
+
   // ── Init ──────────────────────────────────────────────────────
   Future<void> init() async {
     await _loadPrefs();
+    // Carrega os sons na memória para não dar "lag" na primeira vez
     await FlameAudio.audioCache.loadAll([
       'menu_music.mp3',
       'game_music.mp3',
@@ -63,7 +72,11 @@ class AudioService {
     if (!enabled && _currentTrack == 'menu_music.mp3') {
       FlameAudio.bgm.pause();
     } else if (enabled && _currentTrack == 'menu_music.mp3') {
-      FlameAudio.bgm.resume();
+      if (FlameAudio.bgm.isPlaying) {
+        FlameAudio.bgm.resume();
+      } else {
+        playMenuMusic();
+      }
     }
   }
 
@@ -119,7 +132,7 @@ class AudioService {
     FlameAudio.bgm.play('game_music.mp3', volume: _gameVolume);
   }
 
-  /// Pausa a música atual (minimize / pause overlay)
+  /// Pausa a música atual
   void pause() {
     FlameAudio.bgm.pause();
   }

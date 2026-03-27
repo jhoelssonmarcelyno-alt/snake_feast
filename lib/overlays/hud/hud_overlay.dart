@@ -1,10 +1,8 @@
-// lib/overlays/hud_overlay.dart
 import 'package:flutter/material.dart';
 import '../../game/snake_engine.dart';
 import '../../game/engine_zone.dart' hide kBattleTotalTime;
 import '../../services/score_service.dart';
 import '../../utils/constants.dart';
-// ✅ Importando o botão de pause que criamos
 import '../../ui/main_menu/widgets/pause_button.dart';
 import 'hud_joystick.dart';
 import 'hud_boost_button.dart';
@@ -21,12 +19,12 @@ class HudOverlay extends StatefulWidget {
 
 class _HudOverlayState extends State<HudOverlay>
     with SingleTickerProviderStateMixin {
-  // ── Estados de Controle ─────────────────────────────────────
   Offset? _joystickOrigin;
   Offset? _joystickThumb;
   int? _joystickPointer;
   bool _boostPressed = false;
   late AnimationController _pulseCtrl;
+  bool _tickActive = false; // ← controla o loop
 
   static const TextStyle _base = TextStyle(
     decoration: TextDecoration.none,
@@ -37,30 +35,30 @@ class _HudOverlayState extends State<HudOverlay>
   @override
   void initState() {
     super.initState();
-    // Animação para o timer de batalha (aviso/perigo)
     _pulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat(reverse: true);
 
-    // Tick para atualizar os stats
+    _tickActive = true;
     WidgetsBinding.instance.addPostFrameCallback(_tick);
   }
 
   void _tick(Duration _) {
-    if (!mounted) return;
+    if (!_tickActive || !mounted) return;
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback(_tick);
   }
 
   @override
   void dispose() {
+    _tickActive = false; // ← para o loop antes de tudo
     _pulseCtrl.stop();
     _pulseCtrl.dispose();
     super.dispose();
   }
 
-  // ── Handlers do Joystick ────────────────────────────────────
+  // ── Joystick ────────────────────────────────────────────────
   void _onJoyDown(PointerDownEvent e) {
     if (!mounted || _joystickPointer != null) return;
     _joystickPointer = e.pointer;
@@ -98,18 +96,21 @@ class _HudOverlayState extends State<HudOverlay>
   void _onJoyCancel(PointerCancelEvent e) =>
       _onJoyUp(PointerUpEvent(pointer: e.pointer));
 
-  // ── Handlers do Boost ───────────────────────────────────────
+  // ── Boost ───────────────────────────────────────────────────
   void _onBoostDown(PointerDownEvent _) {
+    if (!mounted) return;
     setState(() => _boostPressed = true);
     widget.engine.player.setBoost(true);
   }
 
   void _onBoostUp(PointerUpEvent _) {
+    if (!mounted) return;
     setState(() => _boostPressed = false);
     widget.engine.player.setBoost(false);
   }
 
   void _onBoostCancel(PointerCancelEvent _) {
+    if (!mounted) return;
     setState(() => _boostPressed = false);
     widget.engine.player.setBoost(false);
   }
@@ -130,7 +131,6 @@ class _HudOverlayState extends State<HudOverlay>
         style: _base,
         child: Stack(
           children: [
-            // 🕹️ Joystick (Lado Esquerdo)
             HudJoystick(
               screenWidth: size.width,
               screenHeight: size.height,
@@ -141,8 +141,6 @@ class _HudOverlayState extends State<HudOverlay>
               onUp: _onJoyUp,
               onCancel: _onJoyCancel,
             ),
-
-            // 🔥 Botão de Boost (Canto Inferior Direito)
             Positioned(
               right: 24,
               bottom: 24,
@@ -154,15 +152,11 @@ class _HudOverlayState extends State<HudOverlay>
                 onCancel: _onBoostCancel,
               ),
             ),
-
-            // ⏸️ Botão de PAUSE (Exatamente EM CIMA do Boost)
             Positioned(
-              right: 24, // Alinhado horizontalmente com o Boost
-              bottom: 115, // 24 (margem) + 80 (tamanho do boost) + 11 (respiro)
+              right: 24,
+              bottom: 115,
               child: HudPauseButton(engine: engine),
             ),
-
-            // 🏆 Placar Central Superior
             Positioned(
               top: 0,
               left: 0,
@@ -195,8 +189,6 @@ class _HudOverlayState extends State<HudOverlay>
                 ),
               ),
             ),
-
-            // 📊 Stats Card (Informações da Partida)
             HudStatsCard(
               kills: player.kills,
               length: player.length,

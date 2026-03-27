@@ -1,4 +1,3 @@
-// lib/game/engine_zone.dart
 import 'dart:math';
 import 'dart:ui';
 import 'package:flame/components.dart';
@@ -8,9 +7,8 @@ import 'package:flutter/material.dart' show Colors;
 import '../components/food.dart';
 
 // ── Constantes da zona ────────────────────────────────────────
-const double kBattleTotalTime = 300.0; // 5 minutos
-const double kZoneGraceTime = 60.0; // 1 min sem zona
-const double kZoneMinRadiusFrac = 0.05; // zona final = 5% do mapa
+const double kBattleTotalTime = 300.0; // 5 minutos total
+const double kZoneGraceTime = 60.0; // 1 min de paz → zona aparece com 4:00
 const double kZoneDamagePerSec = 2.0;
 const double kZoneDamageInterval = 0.35;
 
@@ -24,33 +22,18 @@ extension EngineZone on SnakeEngine {
     battleEnded = false;
   }
 
-  // ── Raio atual da zona ────────────────────────────────────────
-  double get zoneRadius {
-    final double halfW = worldSize.x / 2;
-    final double halfH = worldSize.y / 2;
-    final double absoluteMaxR = sqrt(halfW * halfW + halfH * halfH);
-    final double minR = min(halfW, halfH) * kZoneMinRadiusFrac;
-    final double elapsed =
-        (kBattleTotalTime - battleTimer).clamp(0.0, kBattleTotalTime);
-
-    if (elapsed <= kZoneGraceTime) return absoluteMaxR;
-
-    final double shrinkDuration = kBattleTotalTime - kZoneGraceTime;
-    final double shrinkElapsed =
-        (elapsed - kZoneGraceTime).clamp(0.0, shrinkDuration);
-    final double t = shrinkElapsed / shrinkDuration;
-    return absoluteMaxR + (minR - absoluteMaxR) * t;
-  }
-
-  Vector2 get zoneCenter => Vector2(worldSize.x / 2, worldSize.y / 2);
+  // Nota: zoneRadius e zoneCenter são getters definidos diretamente
+  // em SnakeEngine (snake_engine.dart) para ficarem visíveis em
+  // qualquer arquivo sem necessidade de importar engine_zone.dart.
 
   // ── Update principal ──────────────────────────────────────────
+  // ⚠️  NÃO decrementa battleTimer aqui — isso é feito no snake_engine.update()
   void updateBattleZone(double dt) {
     if (battleEnded) return;
 
-    battleTimer = (battleTimer - dt).clamp(0.0, kBattleTotalTime);
     final double elapsed = kBattleTotalTime - battleTimer;
 
+    // Zona visível e com dano após o minuto de graça
     if (elapsed > kZoneGraceTime) {
       battleActive = true;
 
@@ -58,48 +41,48 @@ extension EngineZone on SnakeEngine {
       if (zoneDamageAccum >= kZoneDamageInterval) {
         zoneDamageAccum = 0.0;
         _applyZoneDamage();
-        _optimizeZoneResources(); // ✅ Nova função otimizada
+        _optimizeZoneResources();
       }
     } else {
       battleActive = false;
     }
 
+    // Fim de partida
     if (battleTimer <= 0 || (elapsed > 5 && _countAlive() <= 1)) {
       _endBattle();
     }
   }
 
-  // ── Otimização Jhoelsson Studio: Teleporte em vez de Re-spawn ──
+  // ── Recursos dentro da zona ───────────────────────────────────
   void _optimizeZoneResources() {
     final Vector2 center = zoneCenter;
     final double r = zoneRadius;
     final double rSq = r * r;
 
-    // ✅ REGRA DE ESCASSEZ: Se faltar 1 minuto (60s), para tudo!
-    // As comidas fora da zona não entram mais e as de dentro não renascem.
-    if (battleTimer <= 60) return;
+    if (r < 5) {
+      foods.clear();
+      return;
+    }
 
-    // 1. Em vez de remover, vamos REPOSICIONAR as comidas que ficaram no gás
+    // Teleporta comidas de fora para dentro
     for (final food in foods) {
       if (food.position.distanceToSquared(center) > rSq) {
-        // Teleporta a comida para um lugar seguro dentro do círculo
         food.position.setFrom(_randomInsideZone(center, r));
       }
     }
 
-    // 2. Mantém a densidade mínima sem loops pesados de spawn
+    // Nos últimos 90 segundos NÃO gera mais comida (aumenta tensão)
+    if (battleTimer <= 90) return;
+
     final double zoneArea = pi * r * r;
     final int targetCommon = (zoneArea * kMinFoodDensity)
         .round()
         .clamp(kFoodMinCount, kCommonFoodCount);
-
     final int currentCommon =
         foods.where((f) => f.type == FoodType.common).length;
 
-    // Se ainda faltar comida (porque alguém comeu), adiciona só o necessário
     if (currentCommon < targetCommon) {
-      final int toAdd = (targetCommon - currentCommon)
-          .clamp(0, 5); // Limita por ciclo para não travar
+      final int toAdd = (targetCommon - currentCommon).clamp(0, 5);
       for (int i = 0; i < toAdd; i++) {
         foods.add(Food.common(position: _randomInsideZone(center, r)));
       }
@@ -108,7 +91,6 @@ extension EngineZone on SnakeEngine {
 
   Vector2 _randomInsideZone(Vector2 center, double radius) {
     final angle = rng.nextDouble() * pi * 2;
-    // 0.90 para não spawnar muito colado na borda da zona
     final dist = sqrt(rng.nextDouble()) * radius * 0.90;
     return Vector2(
       center.x + cos(angle) * dist,
@@ -116,7 +98,7 @@ extension EngineZone on SnakeEngine {
     );
   }
 
-  // ── Dano às cobras fora da zona ───────────────────────────────
+  // ── Dano fora da zona ─────────────────────────────────────────
   void _applyZoneDamage() {
     final Vector2 center = zoneCenter;
     final double radius = zoneRadius;
@@ -190,6 +172,9 @@ extension EngineZone on SnakeEngine {
     final double cx = zoneCenter.x - cameraOffset.x;
     final double cy = zoneCenter.y - cameraOffset.y;
     final double r = zoneRadius;
+
+    if (r <= 0.5) return;
+
     final double pulse = 0.7 + 0.3 * sin(battleTimer * 4.0);
 
     final Path outsidePath = Path()
@@ -200,7 +185,6 @@ extension EngineZone on SnakeEngine {
     final double progress = (kBattleTotalTime - battleTimer - kZoneGraceTime) /
         (kBattleTotalTime - kZoneGraceTime);
 
-    // Cor vai de azul para vermelho sangue conforme o tempo acaba
     final Color zoneColor = Color.lerp(
       const Color(0x4400AAFF),
       const Color(0xAAFF2200),
@@ -208,6 +192,7 @@ extension EngineZone on SnakeEngine {
     )!;
 
     canvas.drawPath(outsidePath, Paint()..color = zoneColor);
+
     canvas.drawCircle(
       Offset(cx, cy),
       r,
@@ -227,7 +212,7 @@ extension EngineZone on SnakeEngine {
 
   int get battleTimerPhase {
     if (battleTimer > 120) return 0;
-    if (battleTimer > 60) return 1;
-    return 2; // Fase crítica (último minuto)
+    if (battleTimer > 90) return 1;
+    return 2;
   }
 }

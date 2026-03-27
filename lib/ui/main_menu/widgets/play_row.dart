@@ -1,5 +1,3 @@
-// lib/ui/main_menu/widgets/play_row.dart
-// Linha com botão JOGAR + MULTI + recorde
 import 'package:flutter/material.dart';
 import 'play_button.dart';
 
@@ -25,6 +23,13 @@ class PlayRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = scale;
+    // Largura máxima = tela - padding horizontal (40px cada lado)
+    final maxW = MediaQuery.of(context).size.width - 80 * s;
+    // Botão bluetooth: 48*s + 8*s de espaço = 56*s
+    // Botão jogar: o restante (com limite de 260*s)
+    final btnW = (maxW - 56 * s).clamp(160.0 * s, 260.0 * s);
+
     return FadeTransition(
       opacity: btnFade,
       child: Column(
@@ -32,17 +37,20 @@ class PlayRow extends StatelessWidget {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // ── Botão JOGAR ──────────────────────────────────
               AnimatedBuilder(
                 animation: borderCtrl,
                 builder: (_, __) => PlayButton(
                   borderProgress: borderCtrl.value,
                   onTap: onPlay,
-                  scale: scale,
+                  scale: s,
+                  overrideWidth: btnW,
                 ),
               ),
-              SizedBox(width: 10 * scale),
+              SizedBox(width: 8 * s),
+              // ── Botão Bluetooth ──────────────────────────────
               GestureDetector(
                 onTap: onMulti,
                 child: AnimatedBuilder(
@@ -50,38 +58,29 @@ class PlayRow extends StatelessWidget {
                   builder: (_, __) {
                     final glow = glowCtrl.value;
                     return Container(
-                      width: 54 * scale,
-                      height: 54 * scale,
+                      width: 48 * s,
+                      height: 48 * s,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.black.withValues(alpha: 0.25),
+                        color: Colors.black.withOpacity(0.25),
                         border: Border.all(
-                          color: const Color(0xFF00E5FF).withValues(alpha: 0.4 + glow * 0.3),
+                          color: const Color(0xFF00E5FF)
+                              .withOpacity(0.4 + glow * 0.3),
                           width: 1.5,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF00E5FF).withValues(alpha: 0.15 + glow * 0.15),
-                            blurRadius: 14,
-                            spreadRadius: 2,
+                            color: const Color(0xFF00E5FF)
+                                .withOpacity(0.2 + glow * 0.2),
+                            blurRadius: 10,
+                            spreadRadius: 1,
                           ),
                         ],
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.bluetooth_rounded,
-                              color: const Color(0xFF00E5FF).withValues(alpha: 0.7 + glow * 0.3),
-                              size: 18 * scale),
-                          Text('MULTI',
-                              style: TextStyle(
-                                color: const Color(0xFF00E5FF).withValues(alpha: 0.7 + glow * 0.3),
-                                fontSize: 7 * scale,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1,
-                                decoration: TextDecoration.none,
-                              )),
-                        ],
+                      child: Icon(
+                        Icons.bluetooth,
+                        color: const Color(0xFF00E5FF),
+                        size: 18 * s,
                       ),
                     );
                   },
@@ -89,33 +88,37 @@ class PlayRow extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 6 * scale),
+          SizedBox(height: 6 * s),
+          // ── Recorde ou "TOQUE PARA COMEÇAR" ─────────────────
           highScore > 0
               ? Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 13),
+                    const Icon(Icons.emoji_events_rounded,
+                        color: Colors.white, size: 13),
                     const SizedBox(width: 4),
-                    Text('RECORDE: $highScore',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 9 * scale,
-                          letterSpacing: 2,
-                          fontWeight: FontWeight.bold,
-                          decoration: TextDecoration.none,
-                          shadows: [Shadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 4)],
-                        )),
+                    Text(
+                      'RECORDE: $highScore',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.85),
+                        fontSize: 9 * s,
+                        letterSpacing: 2,
+                        fontWeight: FontWeight.bold,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
                   ],
                 )
-              : Text('TOQUE PARA COMEÇAR',
+              : Text(
+                  'TOQUE PARA COMEÇAR',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
-                    fontSize: 8 * scale,
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 8 * s,
                     letterSpacing: 3,
                     fontWeight: FontWeight.w600,
                     decoration: TextDecoration.none,
-                    shadows: [Shadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 4)],
-                  )),
+                  ),
+                ),
         ],
       ),
     );

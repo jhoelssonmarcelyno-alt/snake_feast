@@ -2,14 +2,24 @@
 import 'dart:math';
 import 'dart:ui';
 import 'snake_engine.dart';
-import 'engine_minimap.dart'; // Essencial para o renderMinimap() funcionar
-import 'engine_leaderboard.dart'; // Se renderLeaderboard estiver em outro arquivo, importe aqui
+import 'engine_minimap.dart';
+import 'engine_leaderboard.dart';
 import '../components/food.dart' show FoodType;
 import '../utils/constants.dart';
 import 'package:flame/components.dart';
 
 extension EngineRender on SnakeEngine {
-  // ─── Renderização Principal ─────────────────────────────────────
+  // ── Viewport com margem para culling ────────────────────────
+  static const double _cullMargin = 80.0;
+
+  bool _inView(double wx, double wy, double radius) {
+    final sx = wx - cameraOffset.x;
+    final sy = wy - cameraOffset.y;
+    final r = radius + _cullMargin;
+    return sx > -r && sx < size.x + r && sy > -r && sy < size.y + r;
+  }
+
+  // ── Renderização Principal ──────────────────────────────────
   void renderWorld(Canvas canvas) {
     canvas.drawRect(Rect.fromLTWH(0, 0, size.x, size.y), bgPaint);
     renderGrassTiles(canvas);
@@ -19,12 +29,11 @@ extension EngineRender on SnakeEngine {
   }
 
   void renderHud(Canvas canvas) {
-    // Esses métodos precisam estar visíveis (via import ou definidos aqui)
     renderMinimap(canvas);
     renderLeaderboard(canvas);
   }
 
-  // ─── Fundo e Grid ──────────────────────────────────────────────
+  // ── Fundo e Grid ────────────────────────────────────────────
   static final Map<int, String> _grassLetters = {};
   static final List<String> _alphabet = ['J', 'S', 'K', 'B', 'H', 'I', 'G'];
   static final Random _grassRng = Random(42);
@@ -81,44 +90,60 @@ extension EngineRender on SnakeEngine {
     }
   }
 
+  // ── Foods: só renderiza o que está na tela ──────────────────
   void renderFoods(Canvas canvas) {
     for (final food in foods) {
-      final double sx = food.position.x - cameraOffset.x;
-      final double sy = food.position.y - cameraOffset.y;
-      final double r = food.radius + food.glowRadius;
-      if (sx < -r || sx > size.x + r || sy < -r || sy > size.y + r) continue;
+      if (!_inView(
+          food.position.x, food.position.y, food.radius + food.glowRadius))
+        continue;
       food.render(canvas, cameraOffset.x, cameraOffset.y);
     }
   }
 
-  // ─── Muro (Corrigindo o erro de Undefined drawBrickedWall) ──────
+  // ── Muro: só desenha as partes visíveis ─────────────────────
   void renderWorldBorder(Canvas canvas) {
     final double tlx = -cameraOffset.x;
     final double tly = -cameraOffset.y;
     final double brx = worldSize.x - cameraOffset.x;
     final double bry = worldSize.y - cameraOffset.y;
 
+    // Só renderiza paredes que estão na tela
+    if (tly < size.y && tly + kWallThickness > 0) {
+      drawBrickedWall(canvas, tlx, tly, brx, tly + kWallThickness, true);
+    }
+    if (bry > 0 && bry - kWallThickness < size.y) {
+      drawBrickedWall(canvas, tlx, bry - kWallThickness, brx, bry, true);
+    }
+    if (tlx < size.x && tlx + kWallThickness > 0) {
+      drawBrickedWall(canvas, tlx, tly, tlx + kWallThickness, bry, false);
+    }
+    if (brx > 0 && brx - kWallThickness < size.x) {
+      drawBrickedWall(canvas, brx - kWallThickness, tly, brx, bry, false);
+    }
+
     canvas.drawRect(
         Rect.fromLTRB(tlx, tly, brx, bry),
         wallShadow
           ..style = PaintingStyle.stroke
           ..strokeWidth = 8);
-
-    // CHAMA O MÉTODO DEFINIDO LOGO ABAIXO
-    drawBrickedWall(canvas, tlx, tly, brx, tly + kWallThickness, true);
-    drawBrickedWall(canvas, tlx, bry - kWallThickness, brx, bry, true);
-    drawBrickedWall(canvas, tlx, tly, tlx + kWallThickness, bry, false);
-    drawBrickedWall(canvas, brx - kWallThickness, tly, brx, bry, false);
   }
 
   void drawBrickedWall(Canvas canvas, double x1, double y1, double x2,
       double y2, bool horizontal) {
+    // Clipa ao viewport para não desenhar tijolos fora da tela
+    final double vx1 = x1.clamp(-_cullMargin, size.x + _cullMargin);
+    final double vy1 = y1.clamp(-_cullMargin, size.y + _cullMargin);
+    final double vx2 = x2.clamp(-_cullMargin, size.x + _cullMargin);
+    final double vy2 = y2.clamp(-_cullMargin, size.y + _cullMargin);
+    if (vx2 <= vx1 || vy2 <= vy1) return;
+
     canvas.drawRect(Rect.fromLTRB(x1, y1, x2, y2), wallBase);
+
     if (horizontal) {
-      for (double ty = y1; ty < y2; ty += kWallBrickH) {
+      for (double ty = vy1; ty < vy2; ty += kWallBrickH) {
         double offset =
             ((ty - y1) / kWallBrickH).floor() % 2 == 0 ? 0 : kWallBrickW * 0.5;
-        for (double tx = x1 - offset; tx < x2; tx += kWallBrickW) {
+        for (double tx = vx1 - offset; tx < vx2; tx += kWallBrickW) {
           final rect = Rect.fromLTRB(
               tx.clamp(x1, x2),
               ty,
@@ -131,10 +156,10 @@ extension EngineRender on SnakeEngine {
         }
       }
     } else {
-      for (double tx = x1; tx < x2; tx += kWallBrickH) {
+      for (double tx = vx1; tx < vx2; tx += kWallBrickH) {
         double offset =
             ((tx - x1) / kWallBrickH).floor() % 2 == 0 ? 0 : kWallBrickW * 0.5;
-        for (double ty = y1 - offset; ty < y2; ty += kWallBrickW) {
+        for (double ty = vy1 - offset; ty < vy2; ty += kWallBrickW) {
           final rect = Rect.fromLTRB(
               tx,
               ty.clamp(y1, y2),
@@ -149,7 +174,6 @@ extension EngineRender on SnakeEngine {
     }
   }
 
-  // Adicione o renderLeaderboard aqui se ele não estiver em engine_leaderboard.dart
   void renderLeaderboard(Canvas canvas) {
     if (lbEntryPainters.isEmpty) return;
     const double lbW = 130.0;

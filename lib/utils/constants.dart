@@ -39,7 +39,7 @@ const double kBotBoostChance = 0.006;
 const double kBotBoostDuration = 2.0;
 
 // ─── SISTEMA BATTLE ROYALE (ZONA) ─────────────────────────────
-const double kBattleTotalTime = 600.0; // 10 minutos de partida total
+const double kBattleTotalTime = 300.0; // 5 minutos de partida total
 const double kZoneDelayBeforeStart = 60.0; // 1 minuto de "paz" antes de fechar
 const double kMinZoneRadius = 250.0; // Raio final onde a zona para
 const double kZoneDamagePerSecond = 5.0; // Dano por segundo fora da zona
@@ -53,8 +53,8 @@ const int kFoodStarValue = 10;
 const double kFoodStarRadius = 9.0;
 const int kFoodBotMassValue = 5;
 const int kFoodBoostMassValue = 3;
-const int kCommonFoodCount = 1500; // total inicial de comida no mapa
-const int kFoodMinCount = 80; // mínimo absoluto dentro da zona final
+const int kCommonFoodCount = 2000; // total inicial de comida no mapa
+const int kFoodMinCount = 30; // mínimo absoluto dentro da zona final
 const double kMinFoodDensity = 0.004; // comidas por px² dentro da zona ativa
 const double kEatRadius = 14.0;
 

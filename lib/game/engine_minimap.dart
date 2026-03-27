@@ -1,17 +1,10 @@
-// lib/game/engine_minimap.dart
-
 import 'dart:ui';
 import 'package:flame/components.dart';
 import 'snake_engine.dart';
-
-// ✅ CORREÇÃO AQUI: Diga ao Dart para esconder a constante que está conflitando
 import 'engine_zone.dart' hide kBattleTotalTime;
-
-// Mantenha o import das constantes normalmente
 import '../utils/constants.dart';
 
 extension EngineMinimap on SnakeEngine {
-  // ... resto do seu código de renderização do minimapa
   void renderMinimap(Canvas canvas) {
     const double ms = kMinimapSize;
     const double mg = kMinimapMargin;
@@ -19,13 +12,11 @@ extension EngineMinimap on SnakeEngine {
     final double mx = size.x - ms - mg;
     final double my = size.y - ms - kMinimapBottomOffset;
 
-    // 1. Desenha o fundo e a borda do Minimapa
     canvas.drawRRect(
         RRect.fromRectAndRadius(
             Rect.fromLTWH(mx, my, ms, ms), const Radius.circular(8)),
         minimapBorder);
 
-    // Função auxiliar mundo -> minimapa
     Offset toMm(Vector2 wp) => Offset(
           mx + (wp.x / worldSize.x) * ms,
           my + (wp.y / worldSize.y) * ms,
@@ -35,18 +26,21 @@ extension EngineMinimap on SnakeEngine {
     canvas.clipRRect(RRect.fromRectAndRadius(
         Rect.fromLTWH(mx, my, ms, ms), const Radius.circular(8)));
 
-    // 2. Renderiza a ZONA (Crucial para o Battle Royale)
     if (battleActive) {
       final Offset zCenter = toMm(zoneCenter);
       final double zRadius = (zoneRadius / worldSize.x) * ms;
 
-      final double danger = 1.0 - (battleTimer / kBattleTotalTime);
+      final double shrinkDuration = kBattleTotalTime - kZoneGraceTime;
+      final double elapsed = (kBattleTotalTime - battleTimer - kZoneGraceTime)
+          .clamp(0.0, shrinkDuration);
+      final double danger = (elapsed / shrinkDuration).clamp(0.0, 1.0);
+
       final Color mZoneColor = Color.lerp(
         const Color(0xFF00AAFF),
         const Color(0xFFFF2200),
         danger,
       )!
-          .withAlpha(160);
+          .withAlpha(180);
 
       canvas.drawCircle(
         zCenter,
@@ -60,28 +54,22 @@ extension EngineMinimap on SnakeEngine {
       canvas.drawCircle(
         zCenter,
         zRadius,
-        Paint()..color = mZoneColor.withAlpha(15),
+        Paint()..color = mZoneColor.withAlpha(20),
       );
     }
 
-    // --- REMOVIDO: Loop de renderFoods (pontos brancos e amarelos) ---
-
-    // 3. Renderiza os BOTS (Inimigos)
+    // Bots
     for (final bot in bots) {
       if (!bot.isAlive || bot.segments.isEmpty) continue;
       minimapBot.color = bot.bodyColor;
-      final Offset p = toMm(bot.segments.first);
-      canvas.drawCircle(p, 2.2, minimapBot);
+      canvas.drawCircle(toMm(bot.segments.first), 2.2, minimapBot);
     }
 
-    // 4. Renderiza o JOGADOR (Destaque)
+    // Jogador
     if (player.isAlive && player.segments.isNotEmpty) {
       minimapPlayer.color = player.skin.accentColor;
       final Offset p = toMm(player.segments.first);
-
-      // Círculo interno
       canvas.drawCircle(p, 3.2, minimapPlayer);
-      // Brilho/Borda externa para não perder de vista
       canvas.drawCircle(
           p,
           4.5,
@@ -91,7 +79,7 @@ extension EngineMinimap on SnakeEngine {
             ..strokeWidth = 1.0);
     }
 
-    // 5. Retângulo da Câmera
+    // Viewport da câmera
     final Offset vtl = toMm(cameraOffset);
     final Offset vbr = toMm(cameraOffset + size);
     canvas.drawRect(

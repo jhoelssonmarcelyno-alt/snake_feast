@@ -1,8 +1,5 @@
-// lib/game/snake_engine.dart
-
 import 'dart:math';
 import 'dart:ui';
-import '../components/snake_bot_ai.dart';
 import 'package:flame/game.dart';
 import 'package:flame/events.dart';
 import 'package:flame/components.dart' show Vector2;
@@ -16,14 +13,20 @@ import 'package:flutter/material.dart'
         TextStyle,
         TextDirection,
         FontWeight,
-        Shadow;
+        Shadow,
+        Paint,
+        PaintingStyle,
+        StrokeCap,
+        Canvas;
 
 import '../components/food.dart';
 import '../components/snake_player.dart';
 import '../components/snake_bot.dart';
+import '../components/snake_bot_ai.dart';
 import '../services/score_service.dart';
 import '../services/audio_service.dart';
-import '../services/bluetooth_service.dart';
+import '../services/level_service.dart';
+import '../models/level_config.dart';
 
 import 'engine_camera.dart';
 import 'engine_collision.dart';
@@ -58,8 +61,79 @@ class GrassBlade {
 
 class SnakeEngine extends FlameGame
     with DragCallbacks, SnakesMixin, MultiplayerMixin, InputMixin, WinMixin {
+  static const double kTotalGameTime = 300.0;
+
+  static const List<Color> _worldBgColors = [
+    Color(0xFF2D5A2D),
+    Color(0xFF1A3A5C),
+    Color(0xFF5C3A1A),
+    Color(0xFF5C1A1A),
+    Color(0xFF1A3A5C),
+    Color(0xFF1A1A2E),
+    Color(0xFF1B3A1B),
+    Color(0xFF4A3000),
+    Color(0xFF263238),
+    Color(0xFF006064),
+    Color(0xFF37474F),
+    Color(0xFF1B5E20),
+    Color(0xFF0D0D0D),
+    Color(0xFF1A0033),
+    Color(0xFF4A1942),
+    Color(0xFF3E2723),
+    Color(0xFF4A0000),
+    Color(0xFF00838F),
+    Color(0xFF1A0044),
+    Color(0xFF1C1C1C),
+    Color(0xFF01579B),
+    Color(0xFF212121),
+    Color(0xFF4A0000),
+    Color(0xFF0D0030),
+    Color(0xFF000000),
+  ];
+
+  static const List<Color> _worldAccentColors = [
+    Color(0xFF4CAF50),
+    Color(0xFF29CFFF),
+    Color(0xFFFF9500),
+    Color(0xFFFF3D00),
+    Color(0xFF80DEEA),
+    Color(0xFF7B1FA2),
+    Color(0xFF8BC34A),
+    Color(0xFFFFB300),
+    Color(0xFFB0BEC5),
+    Color(0xFF00E5FF),
+    Color(0xFF90A4AE),
+    Color(0xFF69F0AE),
+    Color(0xFF455A64),
+    Color(0xFFE040FB),
+    Color(0xFFFF80AB),
+    Color(0xFFBCAAA4),
+    Color(0xFFFF1744),
+    Color(0xFF84FFFF),
+    Color(0xFF7C4DFF),
+    Color(0xFF00E676),
+    Color(0xFF40C4FF),
+    Color(0xFFEEEEEE),
+    Color(0xFFFFD600),
+    Color(0xFFAA00FF),
+    Color(0xFFFFFFFF),
+  ];
+
+  int selectedWorld = 0;
+
+  LevelConfig? _levelConfig;
+  LevelConfig? get currentLevelConfig => _levelConfig;
+  set currentLevelConfig(LevelConfig? value) {
+    _levelConfig = value;
+    _applyWorldTheme();
+  }
+
+  SnakeEngine({LevelConfig? levelConfig}) : _levelConfig = levelConfig;
+
   final Vector2 worldSize = Vector2(kWorldWidth, kWorldHeight);
   Vector2 cameraOffset = Vector2.zero();
+
+  bool battleActive = false;
 
   late SnakePlayer player;
   final List<SnakeBot> bots = [];
@@ -68,17 +142,40 @@ class SnakeEngine extends FlameGame
   int _skinIndex = 0;
   int get skinIndex => _skinIndex;
 
-  // ── Tempo de vida do player na sessão atual ───────────────────
   double sessionTime = 0.0;
+  double battleTimer = kTotalGameTime;
+
+  bool get isFinalStage => battleTimer <= 120.0;
+
+  // ── Zona: getters definidos aqui na classe para serem acessíveis
+  // de qualquer arquivo que importe snake_engine.dart, sem precisar
+  // importar engine_zone.dart (extensões não são visíveis globalmente).
+  // A lógica é idêntica à do getter em engine_zone.dart.
+  Vector2 get zoneCenter => Vector2(worldSize.x / 2, worldSize.y / 2);
+
+  double get zoneRadius {
+    final double halfW = worldSize.x / 2;
+    final double halfH = worldSize.y / 2;
+    final double absoluteMaxR = sqrt(halfW * halfW + halfH * halfH);
+    final double elapsed =
+        (kBattleTotalTime - battleTimer).clamp(0.0, kBattleTotalTime);
+    if (elapsed <= kZoneGraceTime) return absoluteMaxR;
+    final double shrinkDuration = kBattleTotalTime - kZoneGraceTime;
+    final double shrinkElapsed =
+        (elapsed - kZoneGraceTime).clamp(0.0, shrinkDuration);
+    final double t = shrinkElapsed / shrinkDuration;
+    return (absoluteMaxR * (1.0 - t)).clamp(0.0, absoluteMaxR);
+  }
 
   dynamic get leader {
     dynamic best;
     int bestLen = 0;
-    if (player.isAlive && player.length > bestLen) {
+    if (player.isAlive) {
       best = player;
       bestLen = player.length;
     }
-    for (final b in bots) {
+    for (int i = 0; i < bots.length; i++) {
+      final b = bots[i];
       if (b.isAlive && b.length > bestLen) {
         best = b;
         bestLen = b.length;
@@ -92,15 +189,11 @@ class SnakeEngine extends FlameGame
 
   late final List<GrassBlade> grassBlades;
 
-  // --- Battle Royale Zone State ---
-  double battleTimer = kBattleTotalTime;
   double zoneDamageAccum = 0.0;
-  bool battleActive = false;
   bool battleEnded = false;
   String? battleWinner;
 
-  // --- Paints Globais ---
-  final Paint bgPaint = Paint()..color = const Color(0xFF2D5A2D);
+  late Paint bgPaint;
   final Paint grassDarkPaint = Paint()..color = const Color(0xFF2A5228);
   final Paint grassLightPaint = Paint()..color = const Color(0xFF4CAF50);
   final Paint gridPaint = Paint()
@@ -150,29 +243,57 @@ class SnakeEngine extends FlameGame
 
   double attractTimer = 0.0;
 
+  void _applyWorldTheme() {
+    final int idx = selectedWorld.clamp(0, _worldBgColors.length - 1);
+    final Color bg = _worldBgColors[idx];
+    final Color accent = _worldAccentColors[idx];
+
+    bgPaint.color = bg;
+    grassLightPaint.color = Color.lerp(bg, accent, 0.35)!;
+    grassDarkPaint.color = Color.lerp(bg, accent, 0.20)!;
+    bladeDark.color = Color.lerp(bg, accent, 0.25)!;
+    bladeLight.color = Color.lerp(bg, accent, 0.40)!;
+    gridPaint.color = Color.lerp(
+      const Color(0x22FFFFFF),
+      accent.withOpacity(0.15),
+      0.5,
+    )!;
+  }
+
   @override
   Future<void> onLoad() async {
     await super.onLoad();
     await ScoreService.instance.init();
     await AudioService.instance.init();
+    await LevelService.instance.init();
     _skinIndex = ScoreService.instance.selectedSkinIndex;
+
+    bgPaint = Paint()..color = const Color(0xFF2D5A2D);
+    _applyWorldTheme();
 
     grassBlades = _generateGrass();
     buildLbTitle();
 
     player = SnakePlayer(engine: this, skin: kPlayerSkins[_skinIndex]);
     player.name = ScoreService.instance.playerName;
+
+    if (_levelConfig != null) {
+      player.speed = _levelConfig!.speed;
+    }
+
     add(player);
-
     _initBots();
-
     spawnCommonFood(kCommonFoodCount);
     spawnStars();
     initSnakeCounters();
 
-    overlays.add(kOverlayMainMenu);
-    pauseEngine();
-    AudioService.instance.playMenuMusic();
+    if (_levelConfig == null) {
+      overlays.add(kOverlayMainMenu);
+      pauseEngine();
+      AudioService.instance.playMenuMusic();
+    } else {
+      startGame();
+    }
   }
 
   void _initBots() {
@@ -187,11 +308,14 @@ class SnakeEngine extends FlameGame
         bodyColor: colors[0],
         bodyColorDark: colors[1],
         personality: personality,
+        difficultyOverride: _worldDifficulty(),
       );
       bots.add(bot);
       add(bot);
     }
   }
+
+  double _worldDifficulty() => selectedWorld / 24.0;
 
   List<GrassBlade> _generateGrass() {
     final list = <GrassBlade>[];
@@ -243,14 +367,12 @@ class SnakeEngine extends FlameGame
     resumeEngine();
   }
 
-  /// ✅ CORRIGIDO: Agora usa o novo sistema de recompensa completa
   void handlePlayerDeath() async {
     if (overlays.isActive('WinOverlay') || battleEnded) return;
     if (!player.isAlive) return;
 
     player.die();
 
-    // ── Submete XP completo com breakdown (Novo Sistema Jhoelsson Studio) ──
     await ScoreService.instance.submitFullReward(
       score: player.score,
       kills: player.kills,
@@ -262,8 +384,6 @@ class SnakeEngine extends FlameGame
     overlays.remove(kOverlayHud);
     overlays.add(kOverlayGameOver);
     AudioService.instance.playMenuMusic();
-
-    if (isMultiplayer) notifyDeathBluetooth();
   }
 
   void scheduleBotRespawn(SnakeBot bot, {double delay = kBotRespawnDelay}) {
@@ -272,14 +392,16 @@ class SnakeEngine extends FlameGame
   }
 
   void startGame() {
-    // ✅ CORRIGIDO: Removido resetRewardsFlag (agora automático no submit)
     revivesUsed = 0;
     battleEnded = false;
     battleWinner = null;
     zoneDamageAccum = 0.0;
     attractTimer = 0.0;
     sessionTime = 0.0;
+    battleTimer = kTotalGameTime;
+    battleActive = false;
 
+    _applyWorldTheme();
     initBattleZone();
 
     overlays.remove(kOverlayMainMenu);
@@ -292,46 +414,109 @@ class SnakeEngine extends FlameGame
   }
 
   void restartGame() {
+    pauseEngine();
+
+    // ← Remove o HUD imediatamente, antes do delay
+    overlays.remove(kOverlayHud);
+    overlays.remove(kOverlayGameOver);
+    overlays.remove(kOverlayRevive);
+    overlays.remove('WinOverlay');
+
+    if (player.isAlive) player.forceKill();
     foods.clear();
-    if (isMultiplayer) stopMultiplayer();
-    for (final b in List<SnakeBot>.from(bots)) {
-      remove(b);
+
+    for (final b in bots) {
+      if (b.isMounted) remove(b);
     }
     bots.clear();
+
     respawnQueue.clear();
     lbEntryPainters.clear();
-    remove(player);
 
-    Future.microtask(() {
+    if (player.isMounted) remove(player);
+
+    Future.delayed(const Duration(milliseconds: 100), () {
+      ScoreService.instance.resetCurrentScore();
+
       player = SnakePlayer(engine: this, skin: kPlayerSkins[_skinIndex]);
       player.name = ScoreService.instance.playerName;
+
+      if (_levelConfig != null) {
+        player.speed = _levelConfig!.speed;
+      }
+
+      _applyWorldTheme();
+
       add(player);
       _initBots();
       spawnCommonFood(kCommonFoodCount);
       spawnStars();
       initSnakeCounters();
-      startGame();
+
+      startGame(); // ← startGame já adiciona o HUD de volta
     });
+  }
+
+  void consumeFood(dynamic snake, Food food) {
+    if (foods.contains(food)) {
+      foods.remove(food);
+      try {
+        snake.grow(food.value);
+      } catch (e) {}
+    }
   }
 
   @override
   void update(double dt) {
     super.update(dt);
-    updateCamera();
+    if (paused) return;
 
+    updateCamera();
     if (player.isAlive) sessionTime += dt;
 
-    updateBattleZone(dt);
-    checkVictoryCondition();
+    // --- CONTROLE DO CRONÔMETRO ---
+    if (battleTimer > 0) {
+      battleTimer -= dt;
+      if (battleTimer < 0) battleTimer = 0;
+    }
 
-    // ── LÓGICA DE ESCASSEZ ──
-    if (battleTimer > 60) {
+    updateBattleZone(dt);
+
+    // --- LIMPEZA DA ZONA DE PERIGO ---
+    // Remove as comidas que ficaram para trás na zona que está encolhendo
+    if (battleActive) {
+      final r = zoneRadius;
+      final center = zoneCenter;
+      for (int i = foods.length - 1; i >= 0; i--) {
+        if (foods[i].position.distanceTo(center) > r) {
+          foods.removeAt(i);
+        }
+      }
+    }
+
+    // --- REGRA DOS 90 SEGUNDOS (SPAWM DE COMIDA) ---
+    // Só entra aqui se faltar MAIS de 90 segundos para o fim.
+    // Se battleTimer for <= 90, o jogo para de repor a comida.
+    if (battleTimer > 120.0) {
+      if (foods.length < kCommonFoodCount) {
+        spawnCommonFood(1);
+      }
+    }
+
+    // ... restante do código (vitória, respawn de bots, etc)
+
+    if (_levelConfig != null && player.score >= _levelConfig!.targetScore) {
+      checkVictoryCondition();
+    }
+
+    if (!battleActive) {
       processRespawnQueue(dt);
     }
 
     if (!player.isAlive &&
         !overlays.isActive('WinOverlay') &&
-        !overlays.isActive(kOverlayGameOver)) {
+        !overlays.isActive(kOverlayGameOver) &&
+        !overlays.isActive(kOverlayRevive)) {
       handlePlayerDeath();
     }
 
@@ -340,7 +525,6 @@ class SnakeEngine extends FlameGame
       _collisionTimer = 0;
       checkCollisions();
       checkWallCollision();
-      if (isMultiplayer) checkRemoteCollisions();
     }
 
     _lbUpdateTimer += dt;
@@ -350,14 +534,12 @@ class SnakeEngine extends FlameGame
     }
 
     attractFoodToPlayer(dt: dt);
-    if (isMultiplayer) gameSync?.cleanStaleStates();
   }
 
   @override
   void render(Canvas canvas) {
     renderWorld(canvas);
     super.render(canvas);
-    if (isMultiplayer) renderRemotePlayers(canvas);
     if (battleActive) renderZone(canvas);
     renderHud(canvas);
   }

@@ -68,9 +68,13 @@ mixin PlayerRenderer on PlayerExpressions {
     for (int i = segments.length - 1; i >= 1; i--) {
       final double sx = segments[i].x - cam.x;
       final double sy = segments[i].y - cam.y;
-      if (sx < -30 || sx > sw + 30 || sy < -30 || sy > sh + 30) continue;
-      final double t = 1.0 - (i / segments.length);
+      // Culling dinâmico: margem = raio real do segmento + folga mínima
       final double r = _segmentRadius(i, hr);
+      final double margin = r + 2;
+      if (sx < -margin || sx > sw + margin || sy < -margin || sy > sh + margin)
+        continue;
+
+      final double t = 1.0 - (i / segments.length);
       _drawSegment(canvas, Offset(sx, sy), r, t, i, isAnimal);
       if (isBoosting && i % 3 == 0) {
         _glowPaint.color = skinAccentColor.withValues(alpha: 0.28);
@@ -80,7 +84,12 @@ mixin PlayerRenderer on PlayerExpressions {
 
     final double hx = segments.first.x - cam.x;
     final double hy = segments.first.y - cam.y;
-    if (hx > -hr * 3 && hx < sw + hr * 3 && hy > -hr * 3 && hy < sh + hr * 3) {
+    // Margem da cabeça proporcional ao headRadius para evitar pop-in do oval
+    final double headMargin = hr * 3;
+    if (hx > -headMargin &&
+        hx < sw + headMargin &&
+        hy > -headMargin &&
+        hy < sh + headMargin) {
       _renderHead(canvas, Offset(hx, hy), hr, isAnimal);
       _renderName(canvas, Offset(hx, hy), hr);
     }
@@ -93,10 +102,15 @@ mixin PlayerRenderer on PlayerExpressions {
     final prev = segments[segments.length - 2];
     final sx = last.x - cam.x;
     final sy = last.y - cam.y;
-    if (sx < -60 || sx > sw + 60 || sy < -60 || sy > sh + 60) return;
+    // Margem da cauda: tailLen ≈ r * 2.8, então usamos r * 3 para cobrir o shape inteiro
+    final double tailR = _segmentRadius(segments.length - 1, hr);
+    final double tailMargin = tailR * 3;
+    if (sx < -tailMargin ||
+        sx > sw + tailMargin ||
+        sy < -tailMargin ||
+        sy > sh + tailMargin) return;
     final dir = (last - prev);
     final angle = dir.length2 > 0 ? atan2(dir.y, dir.x) : 0.0;
-    final tailR = _segmentRadius(segments.length - 1, hr);
     if (isAnimal) {
       renderAnimalTail(canvas, skinId, Offset(sx, sy), angle, tailR);
     } else {
