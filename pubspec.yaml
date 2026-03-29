@@ -1,5 +1,5 @@
-name: snake_feast
-description: Snake Feast - Snake.io Clone
+name: serpent_strike
+description: A new Flutter project.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -7,43 +7,34 @@ environment:
   sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
+  web_socket_channel: ^2.4.0
   flutter:
     sdk: flutter
-  flame: ^1.17.0
-  flame_audio: ^2.1.1
-  shared_preferences: ^2.5.4
-  vibration: ^3.1.8
-  permission_handler: ^11.3.1   # ← ADICIONADO para solicitar permissões BT
-  device_info_plus: ^10.1.0
-  web_socket_channel: 3.0.3
+  flame: ^1.15.0
+  flame_audio: ^2.1.0
+  shared_preferences: ^2.2.0
+  provider: ^6.1.0
+  permission_handler: ^11.0.0
+  device_info_plus: ^10.0.0
+  connectivity_plus: ^6.0.0
+
 dev_dependencies:
+  web_socket_channel: ^2.4.0
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
-  flutter_launcher_icons: ^0.13.1
-  flutter_native_splash: ^2.4.0
-  
+
 flutter:
   uses-material-design: true
-
+  
   assets:
-    - assets/audio/menu_music.mp3
-    - assets/audio/game_music.mp3
-
-flutter_launcher_icons:
-  android: "launcher_icon"
-  ios: true
-  image_path: "assets/icon/app_icon.png"
-  min_sdk_android: 21
-  adaptive_icon_background: "#2ECC40"
-  adaptive_icon_foreground: "assets/icon/app_icon.png"
-
-flutter_native_splash:
-  color: "#27AE35"
-  image: assets/splash/splash_screen.png
-  android: true
-  ios: true
-  android_12:
-    color: "#27AE35"
-    image: assets/splash/splash_screen.png
-    icon_background_color: "#27AE35"
+    - assets/audio/
+    - assets/images/
+  
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Poppins-Regular.ttf
+          weight: 400
