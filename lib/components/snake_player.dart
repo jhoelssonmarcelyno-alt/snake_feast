@@ -1,3 +1,4 @@
+// lib/components/snake_player.dart
 import 'dart:ui';
 import 'package:flame/events.dart';
 import 'package:flutter/foundation.dart';
@@ -30,6 +31,8 @@ class SnakePlayer extends Component
   final Vector2 _moveDelta = Vector2.zero();
 
   double speed = 150.0;
+  double _baseSpeed = kPlayerBaseSpeed;
+  int _totalLevelBonus = 0;
   SnakeSkin skin;
 
   // ── PlayerExpressions overrides ──────────────────────────────
@@ -102,9 +105,9 @@ class SnakePlayer extends Component
   int _growAccum = 0;
 
   int level = 1;
-  int _starsForLevel = 0;
-  int _foodForLevel = 0;
-  int _killsForLevel = 0;
+  int _totalFoodEaten = 0;
+  int _totalStarsEaten = 0;
+  int _totalKills = 0;
   double levelUpTimer = 0.0;
 
   String name = 'Você';
@@ -149,7 +152,7 @@ class SnakePlayer extends Component
   void _buildNamePainter() {
     _namePainter = TextPainter(
       text: TextSpan(
-        text: name,
+        text: '$name (Lv. $level)',
         style: TextStyle(
           color: skin.accentColor,
           fontSize: 12,
@@ -174,12 +177,22 @@ class SnakePlayer extends Component
     _tongueTimer = 0;
     _isAlive = true;
     level = 1;
-    _starsForLevel = 0;
-    _foodForLevel = 0;
-    _killsForLevel = 0;
+    _totalFoodEaten = 0;
+    _totalStarsEaten = 0;
+    _totalKills = 0;
+    _totalLevelBonus = 0;
+    speed = _baseSpeed;
     levelUpTimer = 0.0;
     for (int i = 0; i < kPlayerInitialSegments; i++) {
       _segments.add(pos - Vector2(kPlayerSegmentSpacing * i, 0));
+    }
+  }
+
+  void _updateSpeedBonus() {
+    final int bonusFromLevels = (level / 10).floor();
+    if (bonusFromLevels > _totalLevelBonus) {
+      _totalLevelBonus = bonusFromLevels;
+      speed = _baseSpeed * (1 + (_totalLevelBonus / 100));
     }
   }
 
@@ -306,7 +319,6 @@ class SnakePlayer extends Component
   void _checkFoodCollisions() {
     final Vector2 head = _segments.first;
     final double eatR = headRadius + kEatRadius;
-    // ✅ OTIMIZAÇÃO: itera de trás pra frente sem alocar lista nova
     for (int i = _engine.foods.length - 1; i >= 0; i--) {
       final food = _engine.foods[i];
       if (food.position.distanceTo(head) < eatR) {
@@ -320,13 +332,53 @@ class SnakePlayer extends Component
   void grow(int amount) {
     score += amount;
     foodEaten += amount;
+
+    if (amount == kFoodStarValue) {
+      _totalStarsEaten++;
+    } else {
+      _totalFoodEaten++;
+    }
+
     _checkRewardMilestones();
-    _checkLevelMilestones(amount);
+    _updateLevelByMilestones();
 
     _growAccum += amount;
     while (_growAccum >= 10) {
       _growAccum -= 10;
       _segments.add(_segments.last.clone());
+    }
+  }
+
+  void _updateLevelByMilestones() {
+    int newLevel = 1;
+    newLevel += _totalFoodEaten ~/ 100;
+    newLevel += _totalStarsEaten ~/ 10;
+    newLevel += _totalKills;
+
+    if (newLevel > level) {
+      final int oldLevel = level;
+      level = newLevel;
+      _onLevelUp(oldLevel, level);
+    }
+  }
+
+  void _onLevelUp(int oldLevel, int newLevel) {
+    levelUpTimer = 2.0;
+    HapticService.instance.boost();
+    _updateSpeedBonus();
+    _addLevelUpEffect();
+  }
+
+  void _addLevelUpEffect() {
+    if (_segments.isEmpty) return;
+    final particles = DeathParticle.burst(
+      engine: _engine,
+      center: _segments.first.clone(),
+      color: const Color(0xFFFFD700),
+      skinId: 'classic',
+    );
+    for (final p in particles) {
+      _engine.add(p);
     }
   }
 
@@ -343,63 +395,18 @@ class SnakePlayer extends Component
     }
   }
 
-  void _checkLevelMilestones(int amount) {
-    if (amount >= 5) {
-      _starsForLevel++;
-      if (_starsForLevel >= 2) {
-        _starsForLevel = 0;
-        _gainLevel();
-      }
-    } else {
-      _foodForLevel += amount;
-      while (_foodForLevel >= 10) {
-        _foodForLevel -= 10;
-        _gainLevel();
-      }
-    }
-  }
-
-  void _gainLevel() {
-    level++;
-    levelUpTimer = 2.0;
-    HapticService.instance.boost();
-  }
-
   void registerKill() {
     kills++;
-    _killsForLevel++;
-    if (_killsForLevel >= 1) {
-      _killsForLevel = 0;
-      _gainLevel();
-    }
+    _totalKills++;
+    _updateLevelByMilestones();
     HapticService.instance.kill();
   }
 
   void revive(Vector2 pos) {
-    // ✅ CORREÇÃO: nunca revive cobra já viva — evita duplicação de segmentos
     if (_isAlive) return;
-
-    _segments.clear();
-    _direction.setValues(1, 0);
-    _targetDirection.setValues(1, 0);
-    _isBoosting = false;
-    _boostDrainAccum = 0;
-    _tongueTimer = 0;
-    _growAccum = 0;
-    _isAlive = true;
-    level = 1;
-    _starsForLevel = 0;
-    _foodForLevel = 0;
-    _killsForLevel = 0;
-    levelUpTimer = 0.0;
-    for (int i = 0; i < kPlayerInitialSegments + 4; i++) {
-      _segments.add(pos - Vector2(kPlayerSegmentSpacing * i, 0));
-    }
+    _spawnAt(pos);
   }
 
-  /// Mata o player SEM efeitos visuais nem haptic.
-  /// Usado pelo restartGame() para zerar o estado imediatamente
-  /// antes de criar um novo player — evita cobra duplicada na tela.
   void forceKill() {
     if (!_isAlive) return;
     _isAlive = false;

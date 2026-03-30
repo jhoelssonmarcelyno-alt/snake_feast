@@ -1,172 +1,231 @@
 import 'package:flutter/material.dart';
 import '../services/level_service.dart';
 import '../services/score_service.dart';
-import '../models/level_config.dart';
+import '../utils/constants.dart';
 
-class LevelSelector extends StatelessWidget {
-  const LevelSelector({super.key});
+class LevelSelectorOverlay extends StatefulWidget {
+  final VoidCallback onClose;
+  final Function(int) onSelectLevel;
+
+  const LevelSelectorOverlay({
+    super.key,
+    required this.onClose,
+    required this.onSelectLevel,
+  });
+
+  @override
+  State<LevelSelectorOverlay> createState() => _LevelSelectorOverlayState();
+}
+
+class _LevelSelectorOverlayState extends State<LevelSelectorOverlay> {
+  int _selectedLevel = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pega o level atual do LevelService
+    final currentLevelConfig = LevelService.instance.currentLevel;
+    final currentLevelNumber = currentLevelConfig?.number ?? 1;
+    _selectedLevel = (currentLevelNumber - 1).clamp(0, 0);
+    if (_selectedLevel < 0) _selectedLevel = 0;
+  }
+
+  void _selectLevel(int levelIndex) {
+    setState(() {
+      _selectedLevel = levelIndex;
+    });
+    widget.onSelectLevel(levelIndex + 1);
+    widget.onClose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    // 1. Usa a instância do Singleton que criamos no LevelService
-    final List<LevelConfig> levels = LevelService.instance.allLevels;
-
-    // 2. Pega o progresso real do jogador do ScoreService
-    final int unlockedLevel = ScoreService.instance.currentLevel;
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: const Text(
-          'MAPA DE FASES',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            letterSpacing: 2,
-            color: Colors.white,
-            fontSize: 18,
+    final levels = LevelService.instance.allLevels;
+    final skinIndex = ScoreService.instance.selectedSkinIndex;
+    final skin = kPlayerSkins[skinIndex.clamp(0, kPlayerSkins.length - 1)];
+    
+    return Material(
+      color: Colors.transparent,
+      child: Center(
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.85,
+          constraints: const BoxConstraints(maxWidth: 500),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1B2A),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: skin.accentColor, width: 2),
           ),
-        ),
-        backgroundColor: Colors.green[900],
-        elevation: 10,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.green[900]!.withValues(alpha: 0.2), Colors.black],
-          ),
-        ),
-        child: GridView.builder(
-          padding: const EdgeInsets.all(20),
-          // BouncingScrollPhysics dá aquele efeito de "mola" ao chegar no fim (padrão iOS/Premium)
-          physics: const BouncingScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1,
-          ),
-          itemCount: levels.length,
-          itemBuilder: (context, index) {
-            final level = levels[index];
-
-            // A fase está liberada se o número dela for <= ao nível atual do jogador
-            bool isLocked = level.number > unlockedLevel;
-
-            return _buildLevelButton(context, level, isLocked);
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLevelButton(
-      BuildContext context, LevelConfig level, bool isLocked) {
-    // Verifica se é uma fase de "Boss" (múltiplos de 10) para destaque visual
-    final bool isBoss = level.number % 10 == 0;
-
-    return GestureDetector(
-      onTap: isLocked
-          ? () => _showLockedMsg(context, level.rankName, level.number)
-          : () => _startLevel(context, level),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        decoration: BoxDecoration(
-          color: isLocked
-              ? Colors.grey[900]?.withValues(alpha: 0.5)
-              : level.themeColor.withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isBoss
-                ? Colors.amberAccent
-                : (isLocked ? Colors.white10 : Colors.white30),
-            width: isBoss ? 2.5 : 1,
-          ),
-          boxShadow: [
-            if (!isLocked)
-              BoxShadow(
-                color: level.themeColor.withValues(alpha: 0.3),
-                blurRadius: 6,
-                spreadRadius: 1,
-              )
-          ],
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '${level.number}',
-                  style: TextStyle(
-                    color: isLocked ? Colors.white24 : Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Cabeçalho
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: skin.accentColor.withOpacity(0.2),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(22),
                   ),
                 ),
-                if (!isLocked)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Text(
-                      level.rankName.split(' ')[0].toUpperCase(),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 7,
-                        fontWeight: FontWeight.w600,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.emoji_events,
+                          color: skin.accentColor,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'SELECIONAR FASE',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    GestureDetector(
+                      onTap: widget.onClose,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white12,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white70,
+                          size: 20,
+                        ),
                       ),
                     ),
+                  ],
+                ),
+              ),
+              
+              // Lista de fases
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: levels.length,
+                  itemBuilder: (context, index) {
+                    final level = levels[index];
+                    final isUnlocked = LevelService.instance.isUnlocked(level.number);
+                    final isSelected = index == _selectedLevel;
+                    
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ElevatedButton(
+                        onPressed: isUnlocked
+                            ? () => _selectLevel(index)
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isSelected
+                              ? skin.accentColor
+                              : (isUnlocked ? Colors.white10 : Colors.white10),
+                          foregroundColor: isSelected ? Colors.black : Colors.white,
+                          padding: const EdgeInsets.all(16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: isSelected
+                                ? BorderSide(color: skin.accentColor, width: 2)
+                                : BorderSide.none,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isUnlocked ? Icons.lock_open : Icons.lock,
+                              color: isSelected
+                                  ? Colors.black
+                                  : (isUnlocked ? Colors.white70 : Colors.white38),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'FASE ${level.number}',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: isSelected
+                                          ? Colors.black
+                                          : Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    level.rankName,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isSelected
+                                          ? Colors.black87
+                                          : Colors.white54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? Colors.white24
+                                    : Colors.white12,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '${level.targetScore} pts',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSelected
+                                      ? Colors.black
+                                      : Colors.white70,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              
+              // Rodapé
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: widget.onClose,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white70,
+                      side: const BorderSide(color: Colors.white24),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('FECHAR'),
                   ),
-              ],
-            ),
-            if (isLocked)
-              const Positioned(
-                top: 4,
-                right: 4,
-                child:
-                    Icon(Icons.lock_outline, color: Colors.white24, size: 12),
+                ),
               ),
-            if (isBoss)
-              Positioned(
-                bottom: 4,
-                child: Icon(Icons.stars_rounded,
-                    color: isLocked ? Colors.white10 : Colors.amberAccent,
-                    size: 14),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
-  }
-
-  void _showLockedMsg(BuildContext context, String rank, int num) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Vença a fase anterior para liberar a Fase $num ($rank)!',
-          style: const TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.red[900],
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _startLevel(BuildContext context, LevelConfig level) {
-    debugPrint('🚀 Snake You: Iniciando Fase ${level.number}');
-
-    // Aqui você integra com a sua SnakeEngine
-    // Exemplo: ScoreService.instance.setSelectedLevel(level.number);
-    // Navigator.pushReplacementNamed(context, '/game_screen');
   }
 }

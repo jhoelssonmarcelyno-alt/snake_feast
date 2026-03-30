@@ -1,23 +1,13 @@
 import 'dart:math';
-import 'dart:ui';
 import 'package:flame/game.dart';
 import 'package:flame/events.dart';
 import 'package:flame/components.dart' show Vector2;
-import 'package:flutter/material.dart'
-    show
-        AppLifecycleState,
-        Color,
-        Colors,
-        TextPainter,
-        TextSpan,
-        TextStyle,
-        TextDirection,
-        FontWeight,
-        Shadow,
-        Paint,
-        PaintingStyle,
-        StrokeCap,
-        Canvas;
+import 'package:flutter/material.dart';
+import 'weather_manager.dart';
+import 'engine_zone_effects.dart';
+import '../services/wins_service.dart';
+import '../services/world_progress_service.dart';
+import '../services/skin_progress_service.dart';
 
 import '../components/food.dart';
 import '../components/snake_player.dart';
@@ -36,10 +26,8 @@ import 'engine_leaderboard.dart';
 import 'engine_snakes.dart';
 import 'engine_multiplayer.dart';
 import 'engine_input.dart';
-import 'engine_zone.dart' hide kBattleTotalTime;
-import 'engine_minimap.dart';
+import 'engine_zone.dart' hide kBattleTotalTime, kZoneGraceTime;
 import 'engine_win.dart';
-import 'game_sync.dart';
 import '../utils/constants.dart';
 
 class RespawnTask {
@@ -143,14 +131,10 @@ class SnakeEngine extends FlameGame
   int get skinIndex => _skinIndex;
 
   double sessionTime = 0.0;
-  double battleTimer = kTotalGameTime;
+  double battleTimer = SnakeEngine.kTotalGameTime;
 
   bool get isFinalStage => battleTimer <= 120.0;
 
-  // ── Zona: getters definidos aqui na classe para serem acessíveis
-  // de qualquer arquivo que importe snake_engine.dart, sem precisar
-  // importar engine_zone.dart (extensões não são visíveis globalmente).
-  // A lógica é idêntica à do getter em engine_zone.dart.
   Vector2 get zoneCenter => Vector2(worldSize.x / 2, worldSize.y / 2);
 
   double get zoneRadius {
@@ -255,7 +239,7 @@ class SnakeEngine extends FlameGame
     bladeLight.color = Color.lerp(bg, accent, 0.40)!;
     gridPaint.color = Color.lerp(
       const Color(0x22FFFFFF),
-      accent.withOpacity(0.15),
+      accent.withValues(alpha: 0.15),
       0.5,
     )!;
   }
@@ -266,7 +250,13 @@ class SnakeEngine extends FlameGame
     await ScoreService.instance.init();
     await AudioService.instance.init();
     await LevelService.instance.init();
+    await WorldProgressService().init(devMode: DEV_MODE);
+    await SkinProgressService().init(devMode: DEV_MODE);
+    await WinsService().init();
     _skinIndex = ScoreService.instance.selectedSkinIndex;
+
+    WeatherManager.init(this);
+    ZoneEffectManager.init();
 
     bgPaint = Paint()..color = const Color(0xFF2D5A2D);
     _applyWorldTheme();
@@ -297,10 +287,31 @@ class SnakeEngine extends FlameGame
   }
 
   void _initBots() {
+    final worldDifficulty = _worldDifficulty();
+
     for (int i = 0; i < kBotCount; i++) {
       final colors = kBotPalette[i % kBotPalette.length];
-      final personality =
-          BotPersonalityType.values[i % BotPersonalityType.values.length];
+
+      BotPersonalityType personality;
+      if (worldDifficulty > 1.2) {
+        final hardPersonalities = [
+          BotPersonalityType.aggressive,
+          BotPersonalityType.hunter,
+          BotPersonalityType.stalker,
+        ];
+        personality = hardPersonalities[i % hardPersonalities.length];
+      } else if (worldDifficulty > 0.7) {
+        personality =
+            BotPersonalityType.values[i % BotPersonalityType.values.length];
+      } else {
+        final easyPersonalities = [
+          BotPersonalityType.passive,
+          BotPersonalityType.cautious,
+          BotPersonalityType.explorer,
+        ];
+        personality = easyPersonalities[i % easyPersonalities.length];
+      }
+
       final bot = SnakeBot(
         botId: i,
         name: kBotNames[i % kBotNames.length],
@@ -308,7 +319,7 @@ class SnakeEngine extends FlameGame
         bodyColor: colors[0],
         bodyColorDark: colors[1],
         personality: personality,
-        difficultyOverride: _worldDifficulty(),
+        difficultyOverride: worldDifficulty,
       );
       bots.add(bot);
       add(bot);
@@ -398,7 +409,7 @@ class SnakeEngine extends FlameGame
     zoneDamageAccum = 0.0;
     attractTimer = 0.0;
     sessionTime = 0.0;
-    battleTimer = kTotalGameTime;
+    battleTimer = SnakeEngine.kTotalGameTime;
     battleActive = false;
 
     _applyWorldTheme();
@@ -416,7 +427,6 @@ class SnakeEngine extends FlameGame
   void restartGame() {
     pauseEngine();
 
-    // ← Remove o HUD imediatamente, antes do delay
     overlays.remove(kOverlayHud);
     overlays.remove(kOverlayGameOver);
     overlays.remove(kOverlayRevive);
@@ -453,7 +463,7 @@ class SnakeEngine extends FlameGame
       spawnStars();
       initSnakeCounters();
 
-      startGame(); // ← startGame já adiciona o HUD de volta
+      startGame();
     });
   }
 
@@ -462,7 +472,9 @@ class SnakeEngine extends FlameGame
       foods.remove(food);
       try {
         snake.grow(food.value);
-      } catch (e) {}
+      } catch (e) {
+        // Ignora erro de crescimento
+      }
     }
   }
 
@@ -472,9 +484,10 @@ class SnakeEngine extends FlameGame
     if (paused) return;
 
     updateCamera();
+    WeatherManager.update(dt);
+
     if (player.isAlive) sessionTime += dt;
 
-    // --- CONTROLE DO CRONÔMETRO ---
     if (battleTimer > 0) {
       battleTimer -= dt;
       if (battleTimer < 0) battleTimer = 0;
@@ -482,8 +495,6 @@ class SnakeEngine extends FlameGame
 
     updateBattleZone(dt);
 
-    // --- LIMPEZA DA ZONA DE PERIGO ---
-    // Remove as comidas que ficaram para trás na zona que está encolhendo
     if (battleActive) {
       final r = zoneRadius;
       final center = zoneCenter;
@@ -494,16 +505,11 @@ class SnakeEngine extends FlameGame
       }
     }
 
-    // --- REGRA DOS 90 SEGUNDOS (SPAWM DE COMIDA) ---
-    // Só entra aqui se faltar MAIS de 90 segundos para o fim.
-    // Se battleTimer for <= 90, o jogo para de repor a comida.
     if (battleTimer > 120.0) {
       if (foods.length < kCommonFoodCount) {
         spawnCommonFood(1);
       }
     }
-
-    // ... restante do código (vitória, respawn de bots, etc)
 
     if (_levelConfig != null && player.score >= _levelConfig!.targetScore) {
       checkVictoryCondition();
@@ -539,6 +545,7 @@ class SnakeEngine extends FlameGame
   @override
   void render(Canvas canvas) {
     renderWorld(canvas);
+    WeatherManager.render(canvas);
     super.render(canvas);
     if (battleActive) renderZone(canvas);
     renderHud(canvas);

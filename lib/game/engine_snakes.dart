@@ -6,9 +6,7 @@
 //   • Revives do jogador
 //
 import 'package:flame/game.dart';
-import '../components/snake_bot.dart';
 import 'snake_engine.dart';
-import '../utils/constants.dart';
 
 mixin SnakesMixin on FlameGame {
   // Cast seguro para o engine completo

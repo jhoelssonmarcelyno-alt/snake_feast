@@ -1,4 +1,3 @@
-// lib/services/rank_system.dart
 import 'package:flutter/material.dart';
 import 'xp_reward.dart';
 
@@ -36,7 +35,7 @@ class RankInfo {
   final Color color;
   final Color colorDark;
   final IconData icon;
-  final int xpRequired;
+  final int winsRequired;  // Vitórias necessárias para atingir esta patente
   final double xpMultiplier;
 
   const RankInfo({
@@ -45,7 +44,7 @@ class RankInfo {
     required this.color,
     required this.colorDark,
     required this.icon,
-    required this.xpRequired,
+    required this.winsRequired,
     required this.xpMultiplier,
   });
 }
@@ -61,7 +60,7 @@ class RankSystem {
         color: Color(0xFFCD7F32),
         colorDark: Color(0xFF6D3A1F),
         icon: Icons.shield_outlined,
-        xpRequired: 0,
+        winsRequired: 0,
         xpMultiplier: 1.0),
     RankInfo(
         rank: Rank.bronze2,
@@ -69,7 +68,7 @@ class RankSystem {
         color: Color(0xFFCD7F32),
         colorDark: Color(0xFF6D3A1F),
         icon: Icons.shield_outlined,
-        xpRequired: 1000,
+        winsRequired: 100,
         xpMultiplier: 1.1),
     RankInfo(
         rank: Rank.bronze1,
@@ -77,7 +76,7 @@ class RankSystem {
         color: Color(0xFFE8A060),
         colorDark: Color(0xFF6D3A1F),
         icon: Icons.shield,
-        xpRequired: 2000,
+        winsRequired: 200,
         xpMultiplier: 1.2),
 
     // ── PRATA ─────────────────────────────────────────────────
@@ -87,7 +86,7 @@ class RankSystem {
         color: Color(0xFFB0BEC5),
         colorDark: Color(0xFF546E7A),
         icon: Icons.shield_outlined,
-        xpRequired: 4000,
+        winsRequired: 300,
         xpMultiplier: 1.4),
     RankInfo(
         rank: Rank.silver2,
@@ -95,7 +94,7 @@ class RankSystem {
         color: Color(0xFFB0BEC5),
         colorDark: Color(0xFF546E7A),
         icon: Icons.shield_outlined,
-        xpRequired: 8000,
+        winsRequired: 400,
         xpMultiplier: 1.6),
     RankInfo(
         rank: Rank.silver1,
@@ -103,7 +102,7 @@ class RankSystem {
         color: Color(0xFFCFD8DC),
         colorDark: Color(0xFF546E7A),
         icon: Icons.shield,
-        xpRequired: 16000,
+        winsRequired: 500,
         xpMultiplier: 1.8),
 
     // ── OURO ──────────────────────────────────────────────────
@@ -113,7 +112,7 @@ class RankSystem {
         color: Color(0xFFFFD600),
         colorDark: Color(0xFFF57F17),
         icon: Icons.workspace_premium,
-        xpRequired: 32000,
+        winsRequired: 600,
         xpMultiplier: 2.0),
     RankInfo(
         rank: Rank.gold3,
@@ -121,7 +120,7 @@ class RankSystem {
         color: Color(0xFFFFD600),
         colorDark: Color(0xFFF57F17),
         icon: Icons.workspace_premium,
-        xpRequired: 64000,
+        winsRequired: 700,
         xpMultiplier: 2.2),
     RankInfo(
         rank: Rank.gold2,
@@ -129,7 +128,7 @@ class RankSystem {
         color: Color(0xFFFFD600),
         colorDark: Color(0xFFF57F17),
         icon: Icons.workspace_premium,
-        xpRequired: 128000,
+        winsRequired: 800,
         xpMultiplier: 2.4),
     RankInfo(
         rank: Rank.gold1,
@@ -137,7 +136,7 @@ class RankSystem {
         color: Color(0xFFFFE566),
         colorDark: Color(0xFFF57F17),
         icon: Icons.workspace_premium,
-        xpRequired: 256000,
+        winsRequired: 900,
         xpMultiplier: 2.6),
 
     // ── PLATINA ───────────────────────────────────────────────
@@ -147,7 +146,7 @@ class RankSystem {
         color: Color(0xFF80DEEA),
         colorDark: Color(0xFF00838F),
         icon: Icons.diamond_outlined,
-        xpRequired: 512000,
+        winsRequired: 1000,
         xpMultiplier: 2.8),
     RankInfo(
         rank: Rank.platinum4,
@@ -155,7 +154,7 @@ class RankSystem {
         color: Color(0xFF80DEEA),
         colorDark: Color(0xFF00838F),
         icon: Icons.diamond_outlined,
-        xpRequired: 1024000,
+        winsRequired: 1100,
         xpMultiplier: 3.0),
     RankInfo(
         rank: Rank.platinum3,
@@ -163,7 +162,7 @@ class RankSystem {
         color: Color(0xFF80DEEA),
         colorDark: Color(0xFF00838F),
         icon: Icons.diamond_outlined,
-        xpRequired: 2048000,
+        winsRequired: 1200,
         xpMultiplier: 3.2),
     RankInfo(
         rank: Rank.platinum2,
@@ -171,7 +170,7 @@ class RankSystem {
         color: Color(0xFF80DEEA),
         colorDark: Color(0xFF00838F),
         icon: Icons.diamond_outlined,
-        xpRequired: 4096000,
+        winsRequired: 1300,
         xpMultiplier: 3.4),
     RankInfo(
         rank: Rank.platinum1,
@@ -179,7 +178,7 @@ class RankSystem {
         color: Color(0xFFB2EBF2),
         colorDark: Color(0xFF00838F),
         icon: Icons.diamond,
-        xpRequired: 8192000,
+        winsRequired: 1400,
         xpMultiplier: 3.6),
 
     // ── DIAMANTE ──────────────────────────────────────────────
@@ -189,7 +188,7 @@ class RankSystem {
         color: Color(0xFF40C4FF),
         colorDark: Color(0xFF0277BD),
         icon: Icons.bolt,
-        xpRequired: 16384000,
+        winsRequired: 1500,
         xpMultiplier: 3.8),
     RankInfo(
         rank: Rank.diamond4,
@@ -197,7 +196,7 @@ class RankSystem {
         color: Color(0xFF40C4FF),
         colorDark: Color(0xFF0277BD),
         icon: Icons.bolt,
-        xpRequired: 32768000,
+        winsRequired: 1600,
         xpMultiplier: 4.0),
     RankInfo(
         rank: Rank.diamond3,
@@ -205,7 +204,7 @@ class RankSystem {
         color: Color(0xFF40C4FF),
         colorDark: Color(0xFF0277BD),
         icon: Icons.bolt,
-        xpRequired: 65536000,
+        winsRequired: 1700,
         xpMultiplier: 4.2),
     RankInfo(
         rank: Rank.diamond2,
@@ -213,7 +212,7 @@ class RankSystem {
         color: Color(0xFF40C4FF),
         colorDark: Color(0xFF0277BD),
         icon: Icons.bolt,
-        xpRequired: 131072000,
+        winsRequired: 1800,
         xpMultiplier: 4.4),
     RankInfo(
         rank: Rank.diamond1,
@@ -221,7 +220,7 @@ class RankSystem {
         color: Color(0xFF80D8FF),
         colorDark: Color(0xFF0277BD),
         icon: Icons.bolt,
-        xpRequired: 262144000,
+        winsRequired: 1900,
         xpMultiplier: 4.6),
 
     // ── TOPO (MESTRE / ELITE / LENDÁRIO) ─────────────────────
@@ -231,7 +230,7 @@ class RankSystem {
         color: Color(0xFFCE93D8),
         colorDark: Color(0xFF7B1FA2),
         icon: Icons.auto_awesome,
-        xpRequired: 524288000,
+        winsRequired: 2000,
         xpMultiplier: 4.7),
     RankInfo(
         rank: Rank.masterHonor,
@@ -239,7 +238,7 @@ class RankSystem {
         color: Color(0xFFAA00FF),
         colorDark: Color(0xFF4A148C),
         icon: Icons.auto_awesome,
-        xpRequired: 1048576000,
+        winsRequired: 2100,
         xpMultiplier: 4.8),
     RankInfo(
         rank: Rank.elite,
@@ -247,7 +246,7 @@ class RankSystem {
         color: Color(0xFFFF5252),
         colorDark: Color(0xFFB71C1C),
         icon: Icons.military_tech,
-        xpRequired: 2097152000,
+        winsRequired: 2200,
         xpMultiplier: 4.9),
     RankInfo(
         rank: Rank.eliteHonor,
@@ -255,7 +254,7 @@ class RankSystem {
         color: Color(0xFFFF1744),
         colorDark: Color(0xFF880E4F),
         icon: Icons.military_tech,
-        xpRequired: 4194304000,
+        winsRequired: 2300,
         xpMultiplier: 5.0),
     RankInfo(
         rank: Rank.legendary,
@@ -263,14 +262,14 @@ class RankSystem {
         color: Color(0xFFFFD700),
         colorDark: Color(0xFFBF360C),
         icon: Icons.local_fire_department,
-        xpRequired: 8388608000,
+        winsRequired: 2500,
         xpMultiplier: 5.5),
   ];
 
-  static RankInfo getRankForXP(int xp) {
+  static RankInfo getRankForWins(int wins) {
     RankInfo current = ranks.first;
     for (final r in ranks) {
-      if (xp >= r.xpRequired) {
+      if (wins >= r.winsRequired) {
         current = r;
       } else {
         break;
@@ -285,25 +284,25 @@ class RankSystem {
     return ranks[idx + 1];
   }
 
-  static double rankProgress(int xp) {
-    final current = getRankForXP(xp);
+  static double rankProgress(int wins) {
+    final current = getRankForWins(wins);
     final next = getNextRank(current);
     if (next == null) return 1.0;
-    final range = next.xpRequired - current.xpRequired;
-    final gained = xp - current.xpRequired;
+    final range = next.winsRequired - current.winsRequired;
+    final gained = wins - current.winsRequired;
     return (gained / range).clamp(0.0, 1.0);
   }
 
-  // Cálculos de recompensa por partida
+  // Calcula recompensa baseada nas vitórias
   static XpReward calculateReward({
     required int score,
     required int kills,
     required int level,
     required double secondsAlive,
     required bool isVictory,
-    required int currentXP,
+    required int totalWins,
   }) {
-    final rank = getRankForXP(currentXP);
+    final rank = getRankForWins(totalWins);
     final mult = rank.xpMultiplier;
 
     return XpReward(
@@ -312,7 +311,7 @@ class RankSystem {
       xpFromLevel: (level * 3 * mult).round(),
       xpFromSurvival: (secondsAlive * 0.1 * mult).round(),
       xpFromVictory:
-          isVictory ? (500 * mult).round() : 0, // Vitória agora vale 500 base
+          isVictory ? (500 * mult).round() : 0,
       rankMultiplier: mult,
       isVictory: isVictory,
     );

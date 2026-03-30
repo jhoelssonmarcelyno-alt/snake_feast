@@ -1,34 +1,109 @@
-import 'package:vibration/vibration.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class HapticService {
-  HapticService._();
-  static final HapticService instance = HapticService._();
+  static final HapticService _instance = HapticService._internal();
+  factory HapticService() => _instance;
+  HapticService._internal();
 
-  bool enabled = true;
-  bool? _hasVibrator;
+  bool _enabled = true;
+  bool _hasVibrator = false;
+  bool _isInitialized = false;
 
-  Future<void> _init() async {
-    _hasVibrator ??= await Vibration.hasVibrator() ?? false;
+  static HapticService get instance => _instance;
+
+  bool get enabled => _enabled;
+  set enabled(bool value) {
+    _enabled = value;
   }
 
-  Future<void> _vibrate({int duration = 50, int amplitude = 128}) async {
-    if (!enabled) return;
-    await _init();
-    if (_hasVibrator != true) return;
-    Vibration.vibrate(duration: duration, amplitude: amplitude);
+  Future<void> init() async {
+    if (_isInitialized) return;
+    
+    try {
+      _hasVibrator = true;
+    } catch (e) {
+      _hasVibrator = false;
+    }
+    
+    _isInitialized = true;
   }
 
-  void eat()   => _vibrate(duration: 30,  amplitude: 80);
-  void boost() => _vibrate(duration: 60,  amplitude: 150);
-  void die()   => _vibrate(duration: 300, amplitude: 255);
-  void kill() {
-    if (!enabled) return;
-    _vibrate(duration: 80, amplitude: 200);
-    Future.delayed(const Duration(milliseconds: 100),
-        () => _vibrate(duration: 40, amplitude: 120));
+  Future<void> light() async {
+    if (!_enabled || !_hasVibrator) return;
+    try {
+      HapticFeedback.lightImpact();
+    } catch (e) {}
   }
 
-  void light()  => _vibrate(duration: 30,  amplitude: 80);
-  void medium() => _vibrate(duration: 60,  amplitude: 150);
-  void heavy()  => _vibrate(duration: 200, amplitude: 255);
+  Future<void> medium() async {
+    if (!_enabled || !_hasVibrator) return;
+    try {
+      HapticFeedback.mediumImpact();
+    } catch (e) {}
+  }
+
+  Future<void> heavy() async {
+    if (!_enabled || !_hasVibrator) return;
+    try {
+      HapticFeedback.heavyImpact();
+    } catch (e) {}
+  }
+
+  Future<void> selection() async {
+    if (!_enabled || !_hasVibrator) return;
+    try {
+      HapticFeedback.selectionClick();
+    } catch (e) {}
+  }
+
+  Future<void> eat() async {
+    if (!_enabled || !_hasVibrator) return;
+    try {
+      HapticFeedback.lightImpact();
+    } catch (e) {}
+  }
+
+  Future<void> boost() async {
+    if (!_enabled || !_hasVibrator) return;
+    try {
+      HapticFeedback.mediumImpact();
+    } catch (e) {}
+  }
+
+  Future<void> kill() async {
+    if (!_enabled || !_hasVibrator) return;
+    try {
+      HapticFeedback.heavyImpact();
+    } catch (e) {}
+  }
+
+  Future<void> die() async {
+    if (!_enabled || !_hasVibrator) return;
+    try {
+      HapticFeedback.heavyImpact();
+    } catch (e) {}
+  }
+
+  Future<void> vibrate({int duration = 50, int amplitude = 128}) async {
+    if (!_enabled || !_hasVibrator) return;
+    try {
+      if (duration < 30) {
+        HapticFeedback.lightImpact();
+      } else if (duration < 80) {
+        HapticFeedback.mediumImpact();
+      } else {
+        HapticFeedback.heavyImpact();
+      }
+    } catch (e) {}
+  }
+
+  Future<void> vibrateLight() async => light();
+  Future<void> vibrateMedium() async => medium();
+  Future<void> vibrateHeavy() async => heavy();
+  Future<void> vibrateSuccess() async => medium();
+  Future<void> vibrateError() async => heavy();
+  Future<void> vibrateSelection() async => selection();
+
+  bool get hasVibrator => _hasVibrator;
 }

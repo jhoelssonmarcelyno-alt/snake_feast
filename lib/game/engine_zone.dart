@@ -1,9 +1,13 @@
+// lib/game/engine_zone.dart
 import 'dart:math';
 import 'dart:ui';
 import 'package:flame/components.dart';
+import 'package:flutter/material.dart';
 import 'snake_engine.dart';
+import 'engine_zone_effects.dart';
+import 'weather/weather_types.dart';
+import 'weather/weather_data.dart';
 import '../utils/constants.dart';
-import 'package:flutter/material.dart' show Colors;
 import '../components/food.dart';
 
 // ── Constantes da zona ────────────────────────────────────────
@@ -22,12 +26,7 @@ extension EngineZone on SnakeEngine {
     battleEnded = false;
   }
 
-  // Nota: zoneRadius e zoneCenter são getters definidos diretamente
-  // em SnakeEngine (snake_engine.dart) para ficarem visíveis em
-  // qualquer arquivo sem necessidade de importar engine_zone.dart.
-
   // ── Update principal ──────────────────────────────────────────
-  // ⚠️  NÃO decrementa battleTimer aqui — isso é feito no snake_engine.update()
   void updateBattleZone(double dt) {
     if (battleEnded) return;
 
@@ -165,7 +164,7 @@ extension EngineZone on SnakeEngine {
     }
   }
 
-  // ── Renderização ──────────────────────────────────────────────
+  // ── Renderização com efeitos personalizados ───────────────────
   void renderZone(Canvas canvas) {
     if (!battleActive) return;
 
@@ -176,31 +175,50 @@ extension EngineZone on SnakeEngine {
     if (r <= 0.5) return;
 
     final double pulse = 0.7 + 0.3 * sin(battleTimer * 4.0);
-
-    final Path outsidePath = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.x, size.y))
-      ..addOval(Rect.fromCircle(center: Offset(cx, cy), radius: r))
-      ..fillType = PathFillType.evenOdd;
-
     final double progress = (kBattleTotalTime - battleTimer - kZoneGraceTime) /
         (kBattleTotalTime - kZoneGraceTime);
 
-    final Color zoneColor = Color.lerp(
-      const Color(0x4400AAFF),
-      const Color(0xAAFF2200),
-      progress.clamp(0.0, 1.0),
-    )!;
+    // Obtém o clima atual do mundo
+    final WeatherType currentWeather =
+        kWorldWeather[selectedWorld.clamp(0, kWorldWeather.length - 1)];
 
-    canvas.drawPath(outsidePath, Paint()..color = zoneColor);
+    // Obtém o efeito de zona correspondente
+    final zoneEffect = ZoneEffectManager.getEffect(currentWeather);
 
-    canvas.drawCircle(
-      Offset(cx, cy),
-      r,
-      Paint()
-        ..color = Colors.redAccent.withValues(alpha: 0.8)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.0 + pulse * 3.0,
-    );
+    if (zoneEffect != null) {
+      // Desenha o efeito personalizado da zona
+      ZoneEffectManager.renderZoneEffect(
+        canvas,
+        currentWeather,
+        Offset(cx, cy),
+        r,
+        pulse,
+        progress.clamp(0.0, 1.0),
+      );
+    } else {
+      // Fallback: efeito padrão
+      final Path outsidePath = Path()
+        ..addRect(Rect.fromLTWH(0, 0, size.x, size.y))
+        ..addOval(Rect.fromCircle(center: Offset(cx, cy), radius: r))
+        ..fillType = PathFillType.evenOdd;
+
+      final Color zoneColor = Color.lerp(
+        const Color(0x4400AAFF),
+        const Color(0xAAFF2200),
+        progress.clamp(0.0, 1.0),
+      )!;
+
+      canvas.drawPath(outsidePath, Paint()..color = zoneColor);
+
+      canvas.drawCircle(
+        Offset(cx, cy),
+        r,
+        Paint()
+          ..color = Colors.redAccent.withValues(alpha: 0.8)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.0 + pulse * 3.0,
+      );
+    }
   }
 
   String get battleTimerFormatted {

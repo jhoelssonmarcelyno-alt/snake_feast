@@ -1,253 +1,257 @@
+import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../utils/constants.dart';
+import 'package:flame_audio/flame_audio.dart';
 import 'rank_system.dart';
 import 'xp_reward.dart';
-import 'package:flutter/material.dart';
+import 'wins_service.dart';
 
 class ScoreService {
-  ScoreService._();
-  static final ScoreService instance = ScoreService._();
+  static final ScoreService _instance = ScoreService._internal();
+  factory ScoreService() => _instance;
+  ScoreService._internal();
+
+  static const String _prefHighScore = 'high_score';
+  static const String _prefPlayerName = 'player_name';
+  static const String _prefCoins = 'coins';
+  static const String _prefDiamonds = 'diamonds';
+  static const String _prefRevives = 'revives';
+  static const String _prefExtraBoosts = 'extra_boosts';
+  static const String _prefUnlockedSkins = 'unlocked_skins';
+  static const String _prefSelectedSkin = 'selected_skin';
+  static const String _prefUnlockedCosmetics = 'unlocked_cosmetics';
+  static const String _prefTotalScore = 'total_score';
 
   late SharedPreferences _prefs;
-  bool _ready = false;
+  bool _initialized = false;
 
-  // ─── PONTUAÇÃO EM TEMPO REAL (RAM) ──────────────────────────
-  int _currentScore = 0;
-  int get currentScore => _currentScore;
+  int _highScore = 0;
+  int _coins = 0;
+  int _diamonds = 0;
+  int _revives = 0;
+  int _extraBoosts = 0;
+  int _revivePrice = 100;
+  String _playerName = 'Jogador';
+  int _totalScore = 0;
 
-  // ✅ O MÉTODO QUE VAI MATAR O ÚLTIMO ERRO:
-  void resetCurrentScore() => _currentScore = 0;
+  List<String> _unlockedSkins = [];
+  int _selectedSkinIndex = 0;
+  List<String> _unlockedCosmetics = [];
+  XpReward? _lastXpReward;
 
-  void addPoints(int amount) => _currentScore += amount;
+  // Getters
+  static ScoreService get instance => _instance;
+  int get highScore => _highScore;
+  int get coins => _coins;
+  int get diamonds => _diamonds;
+  int get revives => _revives;
+  int get extraBoosts => _extraBoosts;
+  int get revivePrice => _revivePrice;
+  String get playerName => _playerName;
+  List<String> get unlockedSkins => _unlockedSkins;
+  int get selectedSkinIndex => _selectedSkinIndex;
+  List<String> get unlockedCosmetics => _unlockedCosmetics;
+  XpReward? get lastXpReward => _lastXpReward;
+  int get totalScore => _totalScore;
 
-  /// Inicializa o serviço de persistência
+  // Propriedades de rank baseadas em vitórias
+  RankInfo get currentRank {
+    final wins = WinsService().totalWins as int;
+    return RankSystem.getRankForWins(wins);
+  }
+  
+  RankInfo? get nextRank {
+    final wins = WinsService().totalWins as int;
+    final current = RankSystem.getRankForWins(wins);
+    return RankSystem.getNextRank(current);
+  }
+  
+  double get rankProgress {
+    final wins = WinsService().totalWins as int;
+    return RankSystem.rankProgress(wins);
+  }
+  
+  int get totalXP {
+    final wins = WinsService().totalWins as int;
+    final rank = RankSystem.getRankForWins(wins);
+    return rank.winsRequired;
+  }
+
   Future<void> init() async {
-    if (_ready) return;
+    if (_initialized) return;
     _prefs = await SharedPreferences.getInstance();
-    _ready = true;
+    _loadData();
+    _initialized = true;
   }
 
-  // ─── PROGRESSO DE NÍVEL ───────────────────────────────────────
+  void _loadData() {
+    _highScore = _prefs.getInt(_prefHighScore) ?? 0;
+    _coins = _prefs.getInt(_prefCoins) ?? 0;
+    _diamonds = _prefs.getInt(_prefDiamonds) ?? 0;
+    _revives = _prefs.getInt(_prefRevives) ?? 3;
+    _extraBoosts = _prefs.getInt(_prefExtraBoosts) ?? 0;
+    _playerName = _prefs.getString(_prefPlayerName) ?? 'Jogador';
+    _totalScore = _prefs.getInt(_prefTotalScore) ?? 0;
 
-  int get currentLevel => _prefs.getInt('current_level') ?? 1;
+    _unlockedSkins = _prefs.getStringList(_prefUnlockedSkins) ?? [];
+    _selectedSkinIndex = _prefs.getInt(_prefSelectedSkin) ?? 0;
+    _unlockedCosmetics = _prefs.getStringList(_prefUnlockedCosmetics) ?? [];
 
-  Future<void> unlockNextLevel() async {
-    await _prefs.setInt('current_level', currentLevel + 1);
+    if (_unlockedSkins.isEmpty) {
+      _unlockedSkins.add('classic');
+      _saveSkins();
+    }
   }
 
-  Future<void> setCurrentLevel(int level) async {
-    await _prefs.setInt('current_level', level);
+  Future<void> _saveData() async {
+    await _prefs.setInt(_prefHighScore, _highScore);
+    await _prefs.setInt(_prefCoins, _coins);
+    await _prefs.setInt(_prefDiamonds, _diamonds);
+    await _prefs.setInt(_prefRevives, _revives);
+    await _prefs.setInt(_prefExtraBoosts, _extraBoosts);
+    await _prefs.setString(_prefPlayerName, _playerName);
+    await _prefs.setInt(_prefTotalScore, _totalScore);
   }
 
-  // ─── HIGH SCORE ───────────────────────────────────────────────
+  void _saveSkins() {
+    _prefs.setStringList(_prefUnlockedSkins, _unlockedSkins);
+    _prefs.setInt(_prefSelectedSkin, _selectedSkinIndex);
+  }
 
-  int get highScore => _prefs.getInt(kPrefHighScore) ?? 0;
+  void _saveCosmetics() {
+    _prefs.setStringList(_prefUnlockedCosmetics, _unlockedCosmetics);
+  }
 
-  Future<XpReward> submitFullReward({
+  Future<void> addCoins(int amount) async {
+    _coins += amount;
+    await _saveData();
+  }
+
+  Future<bool> spendCoins(int amount) async {
+    if (_coins >= amount) {
+      _coins -= amount;
+      await _saveData();
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> addDiamonds(int amount) async {
+    _diamonds += amount;
+    await _saveData();
+  }
+
+  Future<bool> spendDiamonds(int amount) async {
+    if (_diamonds >= amount) {
+      _diamonds -= amount;
+      await _saveData();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> buyRevive() async {
+    if (_coins >= _revivePrice) {
+      _coins -= _revivePrice;
+      _revives++;
+      _revivePrice = (100 + (_revives * 10)).clamp(100, 1000);
+      await _saveData();
+      return true;
+    }
+    return false;
+  }
+
+  void useRevive() {
+    if (_revives > 0) {
+      _revives--;
+      _saveData();
+    }
+  }
+
+  Future<void> addExtraBoosts(int amount) async {
+    _extraBoosts += amount;
+    await _saveData();
+  }
+
+  bool useBoost() {
+    if (_extraBoosts > 0) {
+      _extraBoosts--;
+      _saveData();
+      return true;
+    }
+    return false;
+  }
+
+  bool isSkinUnlocked(String skinId) {
+    return _unlockedSkins.contains(skinId);
+  }
+
+  Future<void> unlockSkin(String skinId) async {
+    if (!_unlockedSkins.contains(skinId)) {
+      _unlockedSkins.add(skinId);
+      _saveSkins();
+    }
+  }
+
+  Future<void> saveSkinIndex(int index) async {
+    _selectedSkinIndex = index;
+    await _prefs.setInt(_prefSelectedSkin, index);
+  }
+
+  bool isCosmeticUnlocked(String cosmeticId) {
+    return _unlockedCosmetics.contains(cosmeticId);
+  }
+
+  Future<void> unlockCosmetic(String cosmeticId) async {
+    if (!_unlockedCosmetics.contains(cosmeticId)) {
+      _unlockedCosmetics.add(cosmeticId);
+      _saveCosmetics();
+    }
+  }
+
+  Future<void> updateHighScore(int score) async {
+    if (score > _highScore) {
+      _highScore = score;
+      await _saveData();
+    }
+  }
+
+  Future<void> setPlayerName(String name) async {
+    _playerName = name.trim();
+    if (_playerName.isEmpty) _playerName = 'Jogador';
+    await _prefs.setString(_prefPlayerName, _playerName);
+  }
+
+  Future<void> addScore(int score) async {
+    _totalScore += score;
+    await _saveData();
+    await updateHighScore(score);
+  }
+
+  void resetCurrentScore() {}
+
+  Future<void> submitFullReward({
     required int score,
     required int kills,
     required int level,
     required double secondsAlive,
     required bool isVictory,
   }) async {
-    // Atualiza o score antes de calcular
-    _currentScore = score;
-
-    final reward = RankSystem.calculateReward(
+    final wins = WinsService().totalWins;
+    
+    _lastXpReward = RankSystem.calculateReward(
       score: score,
       kills: kills,
       level: level,
       secondsAlive: secondsAlive,
       isVictory: isVictory,
-      currentXP: totalXP,
+      totalWins: wins,
     );
-
-    await addXP(reward.total);
-
-    if (isVictory && level == currentLevel) {
-      await unlockNextLevel();
+    
+    final xpTotal = _lastXpReward!.total;
+    await addCoins(xpTotal ~/ 10);
+    
+    if (isVictory) {
+      await WinsService().addWin();
     }
-
-    if (score > highScore) {
-      await _prefs.setInt(kPrefHighScore, score);
-    }
-
-    _lastXpReward = reward;
-    return reward;
-  }
-
-  // ─── XP E PATENTE ─────────────────────────────────────────────
-
-  int get totalXP => _prefs.getInt('total_xp') ?? 0;
-
-  Future<void> addXP(int amount) async {
-    if (amount <= 0) return;
-    await _prefs.setInt('total_xp', totalXP + amount);
-  }
-
-  RankInfo get currentRank => RankSystem.getRankForXP(totalXP);
-  RankInfo? get nextRank => RankSystem.getNextRank(currentRank);
-  double get rankProgress => RankSystem.rankProgress(totalXP);
-
-  XpReward? _lastXpReward;
-  XpReward? get lastXpReward => _lastXpReward;
-
-  // ─── IDENTIDADE DO PLAYER ─────────────────────────────────────
-
-  String get playerName {
-    final n = _prefs.getString('player_name') ?? 'Você';
-    return n.trim().isEmpty ? 'Você' : n;
-  }
-
-  Future<void> savePlayerName(String name) async {
-    final clean = name.trim().isEmpty ? 'Você' : name.trim();
-    await _prefs.setString('player_name', clean);
-  }
-
-  // ─── ECONOMIA (MOEDAS E DIAMANTES) ────────────────────────────
-
-  int get coins => _prefs.getInt('coins') ?? 0;
-  int get diamonds => _prefs.getInt('diamonds') ?? 0;
-
-  Future<void> addCoins(int amount) async {
-    if (amount <= 0) return;
-    await _prefs.setInt('coins', coins + amount);
-  }
-
-  Future<void> addDiamonds(int amount) async {
-    if (amount <= 0) return;
-    await _prefs.setInt('diamonds', diamonds + amount);
-  }
-
-  Future<bool> spendCoins(int amount) async {
-    if (coins < amount) return false;
-    await _prefs.setInt('coins', coins - amount);
-    return true;
-  }
-
-  Future<bool> spendDiamonds(int amount) async {
-    if (diamonds < amount) return false;
-    await _prefs.setInt('diamonds', diamonds - amount);
-    return true;
-  }
-
-  // ─── BOOST EXTRA ──────────────────────────────────────────────
-
-  int get extraBoosts => _prefs.getInt('extra_boosts') ?? 0;
-
-  Future<void> addExtraBoosts(int amount) async {
-    if (amount <= 0) return;
-    await _prefs.setInt('extra_boosts', extraBoosts + amount);
-  }
-
-  Future<bool> spendExtraBoost() async {
-    if (extraBoosts <= 0) return false;
-    await _prefs.setInt('extra_boosts', extraBoosts - 1);
-    return true;
-  }
-
-  // ─── CUSTOMIZAÇÃO (SKINS E COSMÉTICOS) ────────────────────────
-
-  int get selectedSkinIndex {
-    final idx = _prefs.getInt(kPrefSelectedSkin) ?? 0;
-    return idx.clamp(0, kPlayerSkins.length - 1);
-  }
-
-  Future<void> saveSkinIndex(int index) async {
-    await _prefs.setInt(kPrefSelectedSkin, index);
-  }
-
-  SnakeSkin get selectedSkin => kPlayerSkins[selectedSkinIndex];
-
-  List<String> get unlockedSkins =>
-      _prefs.getStringList('unlocked_skins') ?? ['classic'];
-
-  Future<void> unlockSkin(String id) async {
-    final list = unlockedSkins;
-    if (!list.contains(id)) {
-      list.add(id);
-      await _prefs.setStringList('unlocked_skins', list);
-    }
-  }
-
-  bool isSkinUnlocked(String id) {
-    const free = ['classic', 'verde', 'roxo', 'laranja', 'rosa', 'azul'];
-    if (free.contains(id)) return true;
-    return unlockedSkins.contains(id);
-  }
-
-  // ─── ITENS COSMÉTICOS (CHAPÉUS, ETC) ──────────────────────────
-
-  List<String> get unlockedCosmetics =>
-      _prefs.getStringList('unlocked_cosmetics') ?? [];
-
-  Future<void> unlockCosmetic(String id) async {
-    final list = List<String>.from(unlockedCosmetics);
-    if (!list.contains(id)) {
-      list.add(id);
-      await _prefs.setStringList('unlocked_cosmetics', list);
-    }
-  }
-
-  bool isCosmeticUnlocked(String id) => unlockedCosmetics.contains(id);
-
-  // ─── ITENS CONSUMÍVEIS E REVIVES ──────────────────────────────
-
-  int get revives => _prefs.getInt('revives') ?? 0;
-  int get revivesBought => _prefs.getInt('revives_bought') ?? 0;
-
-  int get revivePrice => 10 + (revivesBought * 2);
-
-  Future<bool> buyRevive() async {
-    if (await spendCoins(revivePrice)) {
-      await _prefs.setInt('revives_bought', revivesBought + 1);
-      await _prefs.setInt('revives', revives + 1);
-      return true;
-    }
-    return false;
-  }
-
-  Future<bool> useRevive() async {
-    if (revives <= 0) return false;
-    await _prefs.setInt('revives', revives - 1);
-    return true;
-  }
-
-  // ─── RANKING LOCAL (TOP 10) ───────────────────────────────────
-
-  static const String _kRankingKey = 'local_ranking_v2';
-
-  List<Map<String, dynamic>> getLocalRanking() {
-    if (!_ready) return [];
-    final raw = _prefs.getString(_kRankingKey) ?? '';
-    if (raw.isEmpty) return [];
-
-    final List<Map<String, dynamic>> list = [];
-    for (final entry in raw.split('||')) {
-      final parts = entry.split('::');
-      if (parts.length == 2) {
-        list.add({
-          'name': parts[0],
-          'score': int.tryParse(parts[1]) ?? 0,
-        });
-      }
-    }
-    list.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
-    return list;
-  }
-
-  Future<void> submitToLocalRanking(String name, int score) async {
-    if (score <= 0) return;
-    var list = getLocalRanking();
-
-    list.removeWhere(
-        (e) => e['name'].toString().toLowerCase() == name.toLowerCase());
-    list.add({'name': name, 'score': score});
-
-    list.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
-    final topTen = list.take(10).toList();
-
-    final raw = topTen.map((e) => '${e["name"]}::${e["score"]}').join('||');
-    await _prefs.setString(_kRankingKey, raw);
   }
 }

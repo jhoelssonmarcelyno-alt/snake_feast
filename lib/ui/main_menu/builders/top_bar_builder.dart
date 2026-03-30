@@ -1,144 +1,72 @@
 import 'package:flutter/material.dart';
-import '../../../services/score_service.dart';
-import '../../../services/level_service.dart';
-import '../../../services/audio_service.dart';
+import '../../../game/snake_engine.dart';
 import '../../../utils/constants.dart';
-import '../widgets/glow_icon_button.dart';
 import '../widgets/wallet_badge.dart';
+import '../widgets/name_field.dart';
+import '../widgets/glow_icon_button.dart';
 
-Widget buildTopBar({
-  required Animation<double> fade,
-  required bool isOnline,
-  required Function() onToggleOnline,
-  required Function() onToggleMute,
-  required Function() onOpenShop,
-  required Function() onOpenSettings,
-  required Function() onOpenRank,
-}) {
-  final levels = LevelService.instance.allLevels;
-  final levelData =
-      levels.isNotEmpty ? levels[ScoreService.instance.currentLevel - 1] : null;
-
-  return Positioned(
-    top: 0,
-    left: 0,
-    right: 0,
-    child: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
+class TopBarBuilder {
+  static Widget build({
+    required SnakeEngine engine,
+    required bool isMuted,
+    required int coins,
+    required int diamonds,
+    required VoidCallback onToggleMute,
+    required VoidCallback onShowRank,
+    required Animation<double> fadeAnim,
+    required TextEditingController nameCtrl,
+  }) {
+    return FadeTransition(
+      opacity: fadeAnim,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            if (levelData != null)
-              GestureDetector(
-                onTap: onOpenRank,
-                child: FadeTransition(
-                  opacity: fade,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: levelData.themeColor.withOpacity(0.6),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(levelData.rankIcon,
-                            color: levelData.themeColor, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          "FASE ${levelData.number}: ${levelData.rankName.toUpperCase()}",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Icon(Icons.arrow_drop_down,
-                            color: Colors.white54),
-                      ],
-                    ),
-                  ),
+            // Lado esquerdo - Moedas e Diamantes
+            WalletBadge(
+              coins: coins,
+              diamonds: diamonds,
+            ),
+            
+            // Centro - Nome do jogador
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                child: NameField(
+                  controller: nameCtrl,
+                  onChanged: (name) {},
                 ),
               ),
-            const SizedBox(height: 10),
+            ),
+            
+            // Lado direito - Botões
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    WalletBadge(
-                      coins: ScoreService.instance.coins,
-                      diamonds: ScoreService.instance.diamonds,
-                      fadeAnim: fade,
-                    ),
-                    const SizedBox(width: 8),
-                    _circleBtn(
-                      fade: fade,
-                      icon: isOnline ? Icons.wifi : Icons.wifi_off,
-                      color:
-                          isOnline ? const Color(0xFF29CFFF) : Colors.white30,
-                      onTap: onToggleOnline,
-                    ),
-                    const SizedBox(width: 8),
-                    _circleBtn(
-                      fade: fade,
-                      icon: AudioService.instance.isMuted
-                          ? Icons.volume_off
-                          : Icons.volume_up,
-                      color: AudioService.instance.isMuted
-                          ? Colors.redAccent
-                          : Colors.white,
-                      onTap: onToggleMute,
-                    ),
-                  ],
+                GlowIconButton(
+                  icon: isMuted ? Icons.volume_off : Icons.volume_up,
+                  onTap: onToggleMute,
+                  color: Colors.white70,
                 ),
-                Row(
-                  children: [
-                    GlowIconButton(
-                      onTap: onOpenShop,
-                      color: const Color(0xFFFFD600),
-                      icon: Icons.store,
-                    ),
-                    const SizedBox(width: 8),
-                    GlowIconButton(
-                      onTap: onOpenSettings,
-                      color: const Color(0xFF29CFFF),
-                      icon: Icons.settings,
-                    ),
-                  ],
+                const SizedBox(width: 8),
+                GlowIconButton(
+                  icon: Icons.leaderboard,
+                  onTap: onShowRank,
+                  color: Colors.white70,
+                ),
+                const SizedBox(width: 8),
+                GlowIconButton(
+                  icon: Icons.settings,
+                  onTap: () {
+                    engine.overlays.add(kOverlaySettings);
+                  },
+                  color: Colors.white70,
                 ),
               ],
             ),
           ],
         ),
       ),
-    ),
-  );
-}
-
-Widget _circleBtn({
-  required Animation<double> fade,
-  required IconData icon,
-  required Color color,
-  required VoidCallback onTap,
-}) {
-  return FadeTransition(
-    opacity: fade,
-    child: GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.4),
-          shape: BoxShape.circle,
-          border: Border.all(color: color.withOpacity(0.4)),
-        ),
-        child: Icon(icon, color: color, size: 16),
-      ),
-    ),
-  );
+    );
+  }
 }

@@ -1,3 +1,4 @@
+import '../../components/animal_skins/heads/head_registry.dart';
 // lib/components/expressions/expressions_mixin.dart
 import 'dart:ui';
 import 'package:flutter/material.dart' show Color;
@@ -60,5 +61,21 @@ mixin PlayerExpressions {
       skinBodyColorDark,
       skinAccentColor,
     );
+  }
+}
+
+(double, double) animalHeadShape(String animalType) {
+  switch (animalType) {
+    case 'cat': return (2.0, 2.2);
+    case 'dog': return (2.2, 2.3);
+    case 'lion': return (2.6, 2.5);
+    case 'rabbit': return (1.9, 2.4);
+    case 'fox': return (2.5, 2.0);
+    case 'dragon': return (2.6, 2.0);
+    case 'wolf': return (2.4, 2.2);
+    case 'tiger': return (2.5, 2.3);
+    case 'bear': return (2.7, 2.4);
+    case 'eagle': return (2.3, 1.9);
+    default: return (2.2, 1.9);
   }
 }

@@ -1,4 +1,3 @@
-// lib/main.dart
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,7 +12,7 @@ import 'overlays/revive_overlay.dart';
 import 'overlays/shop_overlay.dart';
 import 'overlays/lobby_overlay.dart';
 import 'overlays/ranking_overlay.dart';
-import 'game/engine_win.dart';
+import 'game/overlays/win_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -79,10 +78,13 @@ class _GameScreenState extends State<GameScreen> {
                 kOverlayRevive: (context, game) => ReviveOverlay(engine: game),
                 kOverlayLobby: (context, game) => LobbyOverlay(engine: game),
                 kOverlayRanking: (context, game) =>
-                    RankingOverlay(engine: game),
-
-                // ✅ CORREÇÃO: Usando constante kOverlayWin (defina em constants.dart)
-                'WinOverlay': (context, game) => WinOverlay(game: game),
+                    RankingOverlay(
+                      engine: game,
+                      onClose: () {
+                        game.overlays.remove(kOverlayRanking);
+                      },
+                    ),
+                kOverlayWin: (context, game) => WinOverlay(game: game),
               },
               initialActiveOverlays: const [kOverlayMainMenu],
             ),

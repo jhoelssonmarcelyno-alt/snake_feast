@@ -1,3 +1,4 @@
+import '../components/animal_skins/heads/head_registry.dart';
 // lib/components/snake_player_renderer.dart
 import 'dart:math';
 import 'dart:ui';
@@ -30,6 +31,13 @@ const _kAnimalSkinIds = {
   'peixe',
   'dragao_animal',
   'raposa',
+  // Novos
+  'aguia',
+  'papagaio',
+  'coruja',
+  'urso',
+  'lobo',
+  'tubarao',
 };
 
 mixin PlayerRenderer on PlayerExpressions {
@@ -510,4 +518,28 @@ mixin PlayerRenderer on PlayerExpressions {
     final hsv = HSVColor.fromColor(c);
     return hsv.withValue((hsv.value - amount).clamp(0.0, 1.0)).toColor();
   }
+}
+
+// Funções de compatibilidade
+void renderAnimalTail(Canvas canvas, String animalType, Offset pos, double angle, double r) {
+  // Implementação simples de cauda
+  canvas.save();
+  canvas.translate(pos.dx, pos.dy);
+  canvas.rotate(angle);
+  
+  final tailLen = r * 2.0;
+  final path = Path()
+    ..moveTo(0, -r * 0.6)
+    ..cubicTo(r * 0.2, -r * 0.4, tailLen * 0.5, -r * 0.2, tailLen, 0)
+    ..cubicTo(tailLen * 0.5, r * 0.2, r * 0.2, r * 0.4, 0, r * 0.6)
+    ..close();
+  
+  canvas.drawPath(path, Paint()..color = Colors.grey);
+  canvas.restore();
+}
+
+void renderAnimalBackLayer(Canvas canvas, String animalType, double r, double t, Color body, Color dark) {
+  // Usa o HeadRegistry
+  final head = HeadRegistry.get(animalType);
+  head.paintBack(canvas, r, body, dark);
 }

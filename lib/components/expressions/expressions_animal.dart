@@ -1,7 +1,7 @@
+import '../../components/animal_skins/heads/head_registry.dart';
 // lib/components/expressions/expressions_animal.dart
 import 'dart:ui';
 import 'package:flutter/material.dart' show Color;
-import '../animal_skins.dart';
 
 const _animalSkins = {
   'gato', 'cachorro', 'leao', 'vaca', 'coelho',
@@ -30,4 +30,9 @@ void renderAnimalFrontLayer(
   Color bodyColorDark,
 ) {
   renderAnimalFront(canvas, skinId, hr, t, bodyColor, bodyColorDark);
+}
+
+void renderAnimalFront(Canvas canvas, String animalType, double r, double t, Color body, Color dark) {
+  final head = HeadRegistry.get(animalType);
+  head.paintFront(canvas, r, t, body, dark);
 }

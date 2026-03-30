@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../game/snake_engine.dart';
-import '../../game/engine_zone.dart' hide kBattleTotalTime;
+import '../../game/engine_zone.dart' hide kBattleTotalTime, kZoneGraceTime;
 import '../../services/score_service.dart';
 import '../../utils/constants.dart';
 import '../../ui/main_menu/widgets/pause_button.dart';

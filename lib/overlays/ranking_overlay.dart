@@ -1,326 +1,289 @@
-// lib/overlays/ranking_overlay.dart
 import 'package:flutter/material.dart';
 import '../game/snake_engine.dart';
 import '../services/score_service.dart';
+import '../services/rank_system.dart';
+import '../services/wins_service.dart';
 import '../utils/constants.dart';
 
 class RankingOverlay extends StatefulWidget {
   final SnakeEngine engine;
-  const RankingOverlay({super.key, required this.engine});
+  final VoidCallback onClose;
+  
+  const RankingOverlay({
+    super.key,
+    required this.engine,
+    required this.onClose,
+  });
 
   @override
   State<RankingOverlay> createState() => _RankingOverlayState();
 }
 
-class _RankingOverlayState extends State<RankingOverlay>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _fade;
-  late final Animation<Offset> _slide;
-  late List<Map<String, dynamic>> _local;
+class _RankingOverlayState extends State<RankingOverlay> {
+  List<Map<String, dynamic>> _ranking = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _local = ScoreService.instance.getLocalRanking();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 380));
-    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    _slide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-    _ctrl.forward();
+    _loadRanking();
   }
 
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _close() => widget.engine.overlays.remove(kOverlayRanking);
-
-  String _medal(int pos) {
-    if (pos == 1) return '🥇';
-    if (pos == 2) return '🥈';
-    if (pos == 3) return '🥉';
-    return '';
-  }
-
-  Color _posColor(int pos) {
-    if (pos == 1) return const Color(0xFFFFD700);
-    if (pos == 2) return const Color(0xFFB0BEC5);
-    if (pos == 3) return const Color(0xFFFF8A65);
-    return Colors.white38;
+  Future<void> _loadRanking() async {
+    setState(() => _isLoading = true);
+    
+    final wins = await WinsService().totalWins;
+    final currentRank = RankSystem.getRankForWins(wins);
+    final skinIndex = ScoreService.instance.selectedSkinIndex;
+    final skin = kPlayerSkins[skinIndex.clamp(0, kPlayerSkins.length - 1)];
+    
+    _ranking = [
+      {
+        'name': ScoreService.instance.playerName,
+        'wins': wins,
+        'rank': currentRank.name,
+        'color': skin.accentColor,
+        'isPlayer': true,
+      },
+      {
+        'name': 'Serpente Suprema',
+        'wins': (wins * 0.8).toInt(),
+        'rank': RankSystem.getRankForWins((wins * 0.8).toInt()).name,
+        'color': const Color(0xFFFFD600),
+        'isPlayer': false,
+      },
+      {
+        'name': 'Dragão de Fogo',
+        'wins': (wins * 0.6).toInt(),
+        'rank': RankSystem.getRankForWins((wins * 0.6).toInt()).name,
+        'color': const Color(0xFFFF6B6B),
+        'isPlayer': false,
+      },
+      {
+        'name': 'Cobra de Gelo',
+        'wins': (wins * 0.4).toInt(),
+        'rank': RankSystem.getRankForWins((wins * 0.4).toInt()).name,
+        'color': const Color(0xFF80DEEA),
+        'isPlayer': false,
+      },
+      {
+        'name': 'Víbora da Tempestade',
+        'wins': (wins * 0.2).toInt(),
+        'rank': RankSystem.getRankForWins((wins * 0.2).toInt()).name,
+        'color': const Color(0xFFE040FB),
+        'isPlayer': false,
+      },
+    ];
+    
+    _ranking.sort((a, b) => b['wins'].compareTo(a['wins']));
+    
+    setState(() => _isLoading = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final myName = ScoreService.instance.playerName.toLowerCase();
-
+    final skinIndex = ScoreService.instance.selectedSkinIndex;
+    final skin = kPlayerSkins[skinIndex.clamp(0, kPlayerSkins.length - 1)];
+    
     return Material(
       color: Colors.transparent,
-      child: DefaultTextStyle(
-        style: const TextStyle(
-            decoration: TextDecoration.none,
-            decorationColor: Colors.transparent,
-            decorationThickness: 0),
+      child: Center(
         child: Container(
-          color: Colors.black.withOpacity(0.82),
-          child: SafeArea(
-            child: Center(
-              child: FadeTransition(
-                opacity: _fade,
-                child: SlideTransition(
-                  position: _slide,
-                  child: Container(
-                    width: mq.size.width * 0.90,
-                    constraints: BoxConstraints(
-                      maxWidth: 440,
-                      maxHeight: mq.size.height * 0.86,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24),
-                      color: const Color(0xFF0D1B2A),
-                      border: Border.all(
-                          color: const Color(0xFFFFD700).withOpacity(0.5),
-                          width: 1.5),
-                      boxShadow: [
-                        BoxShadow(
-                            color: const Color(0xFFFFD700).withOpacity(0.10),
-                            blurRadius: 30,
-                            spreadRadius: 4)
+          width: MediaQuery.of(context).size.width * 0.9,
+          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1B2A),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: skin.accentColor, width: 2),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Cabeçalho
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: skin.accentColor.withOpacity(0.2),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(22),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.leaderboard,
+                          color: skin.accentColor,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'RANKING',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
-                    child: Column(children: [
-                      // ── Cabeçalho ────────────────────────────
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-                        decoration: const BoxDecoration(
-                          borderRadius:
-                              BorderRadius.vertical(top: Radius.circular(24)),
-                          gradient: LinearGradient(
-                            colors: [Color(0xFF2A1E00), Color(0xFF0D1B2A)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
+                    GestureDetector(
+                      onTap: widget.onClose,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white12,
+                          shape: BoxShape.circle,
                         ),
-                        child: Row(children: [
-                          const Text('🏆',
-                              style: TextStyle(
-                                  fontSize: 24,
-                                  decoration: TextDecoration.none)),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Lista de ranking
+              Expanded(
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFFD600),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _ranking.length,
+                        itemBuilder: (context, index) {
+                          final entry = _ranking[index];
+                          final isPlayer = entry['isPlayer'] as bool;
+                          
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: isPlayer
+                                  ? entry['color'].withOpacity(0.2)
+                                  : Colors.white10,
+                              borderRadius: BorderRadius.circular(10),
+                              border: isPlayer
+                                  ? Border.all(color: entry['color'], width: 1)
+                                  : null,
+                            ),
+                            child: Row(
                               children: [
-                                Text('HALL DA FAMA',
-                                    style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w900,
-                                        color: Color(0xFFFFD700),
-                                        letterSpacing: 3,
-                                        decoration: TextDecoration.none)),
-                                Text('Melhores recordes neste dispositivo',
-                                    style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.white38,
-                                        decoration: TextDecoration.none)),
+                                // Posição
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: isPlayer
+                                        ? entry['color']
+                                        : Colors.white12,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${index + 1}',
+                                      style: TextStyle(
+                                        color: isPlayer
+                                            ? Colors.black
+                                            : Colors.white70,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                
+                                // Nome e patente
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        entry['name'],
+                                        style: TextStyle(
+                                          color: isPlayer
+                                              ? entry['color']
+                                              : Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: isPlayer
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        entry['rank'],
+                                        style: TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                
+                                // Vitórias
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '${entry['wins']}',
+                                      style: TextStyle(
+                                        color: isPlayer
+                                            ? entry['color']
+                                            : Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const Text(
+                                      'vitórias',
+                                      style: TextStyle(
+                                        color: Colors.white54,
+                                        fontSize: 8,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
-                          ),
-                          GestureDetector(
-                            onTap: _close,
-                            child: Container(
-                              width: 30,
-                              height: 30,
-                              decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.white.withOpacity(0.07)),
-                              child: const Icon(Icons.close_rounded,
-                                  color: Colors.white38, size: 17),
-                            ),
-                          ),
-                        ]),
+                          );
+                        },
                       ),
-
-                      // ── Lista ─────────────────────────────────
-                      Flexible(
-                        child: _local.isEmpty
-                            ? _buildEmpty()
-                            : ListView.builder(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 8),
-                                itemCount: _local.length,
-                                itemBuilder: (_, i) {
-                                  final e = _local[i];
-                                  final pos = i + 1;
-                                  final name = e['name'] as String;
-                                  final score = e['score'] as int;
-                                  final isMe = name.toLowerCase() == myName;
-                                  final isTop3 = pos <= 3;
-                                  return Container(
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 3),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 14, vertical: 11),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(14),
-                                      color: isMe
-                                          ? const Color(0xFFFFD700)
-                                              .withOpacity(0.07)
-                                          : isTop3
-                                              ? Colors.white.withOpacity(0.03)
-                                              : Colors.transparent,
-                                      border: isMe
-                                          ? Border.all(
-                                              color: const Color(0xFFFFD700)
-                                                  .withOpacity(0.35),
-                                              width: 1.2)
-                                          : isTop3
-                                              ? Border.all(
-                                                  color: _posColor(pos)
-                                                      .withOpacity(0.18),
-                                                  width: 1)
-                                              : null,
-                                    ),
-                                    child: Row(children: [
-                                      // Medalha / número
-                                      SizedBox(
-                                        width: 40,
-                                        child: isTop3
-                                            ? Text(_medal(pos),
-                                                style: const TextStyle(
-                                                    fontSize: 22,
-                                                    decoration:
-                                                        TextDecoration.none))
-                                            : Text('$pos',
-                                                textAlign: TextAlign.center,
-                                                style: TextStyle(
-                                                    color: _posColor(pos),
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.bold,
-                                                    decoration:
-                                                        TextDecoration.none)),
-                                      ),
-                                      // Nome
-                                      Expanded(
-                                        child: Row(children: [
-                                          Flexible(
-                                            child: Text(name,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  color: isMe
-                                                      ? const Color(0xFFFFD700)
-                                                      : Colors.white,
-                                                  fontSize:
-                                                      isMe || isTop3 ? 14 : 13,
-                                                  fontWeight: isMe || isTop3
-                                                      ? FontWeight.bold
-                                                      : FontWeight.normal,
-                                                  decoration:
-                                                      TextDecoration.none,
-                                                )),
-                                          ),
-                                          if (isMe) ...[
-                                            const SizedBox(width: 6),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 6,
-                                                      vertical: 2),
-                                              decoration: BoxDecoration(
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                                color: const Color(0xFFFFD700)
-                                                    .withOpacity(0.15),
-                                              ),
-                                              child: const Text('VOCÊ',
-                                                  style: TextStyle(
-                                                      color: Color(0xFFFFD700),
-                                                      fontSize: 8,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      letterSpacing: 1,
-                                                      decoration:
-                                                          TextDecoration.none)),
-                                            ),
-                                          ],
-                                        ]),
-                                      ),
-                                      // Score
-                                      Text('$score',
-                                          style: TextStyle(
-                                              color: isMe
-                                                  ? const Color(0xFFFFD700)
-                                                  : const Color(0xFF00E5FF),
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.bold,
-                                              decoration: TextDecoration.none)),
-                                    ]),
-                                  );
-                                },
-                              ),
+              ),
+              
+              // Rodapé
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: widget.onClose,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white70,
+                      side: const BorderSide(color: Colors.white24),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
-
-                      // ── Botão fechar ──────────────────────────
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
-                        child: GestureDetector(
-                          onTap: _close,
-                          child: Container(
-                            width: double.infinity,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              color: Colors.white.withOpacity(0.04),
-                              border: Border.all(
-                                  color: Colors.white.withOpacity(0.10)),
-                            ),
-                            child: const Center(
-                                child: Text('FECHAR',
-                                    style: TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 2,
-                                        decoration: TextDecoration.none))),
-                          ),
-                        ),
-                      ),
-                    ]),
+                    ),
+                    child: const Text('FECHAR'),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildEmpty() {
-    return const Center(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('🎮',
-            style: TextStyle(fontSize: 44, decoration: TextDecoration.none)),
-        SizedBox(height: 14),
-        Text('Nenhum recorde ainda!',
-            style: TextStyle(
-                color: Colors.white38,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                decoration: TextDecoration.none)),
-        SizedBox(height: 8),
-        Text('Jogue uma partida para\naparecer aqui',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: Colors.white24,
-                fontSize: 12,
-                decoration: TextDecoration.none)),
-      ]),
     );
   }
 }

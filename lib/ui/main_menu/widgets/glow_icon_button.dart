@@ -1,54 +1,29 @@
-// lib/ui/main_menu/widgets/glow_icon_button.dart
 import 'package:flutter/material.dart';
 
-class GlowIconButton extends StatefulWidget {
+class GlowIconButton extends StatelessWidget {
+  final IconData icon;
   final VoidCallback onTap;
   final Color color;
-  final IconData icon;
-  const GlowIconButton(
-      {super.key, required this.onTap, required this.color, required this.icon});
 
-  @override
-  State<GlowIconButton> createState() => _GlowIconButtonState();
-}
-
-class _GlowIconButtonState extends State<GlowIconButton> {
-  bool _pressed = false;
+  const GlowIconButton({
+    super.key,
+    required this.icon,
+    required this.onTap,
+    this.color = Colors.white70,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onTap();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.88 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        child: Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            // Fundo sólido para ser visível no fundo verde
-            color: const Color(0xFF29CFFF).withValues(alpha: 0.9),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF29CFFF).withValues(alpha: 0.5),
-                blurRadius: 12,
-                spreadRadius: 2,
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 6,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Icon(widget.icon, color: Colors.white, size: 22),
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white12,
         ),
+        child: Icon(icon, color: color, size: 18),
       ),
     );
   }

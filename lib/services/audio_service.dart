@@ -31,7 +31,24 @@ class AudioService {
 
   /// O menu chama 'toggleMute' ao clicar no ícone circular.
   void toggleMute() {
-    setMenuMusic(!_menuMusicEnabled);
+    // Alterna o estado
+    _menuMusicEnabled = !_menuMusicEnabled;
+    _savePrefs();
+    
+    if (_menuMusicEnabled) {
+      // Se desmutou, retoma a música
+      if (_currentTrack == 'menu_music.mp3') {
+        FlameAudio.bgm.resume();
+      } else if (_currentTrack == 'game_music.mp3') {
+        FlameAudio.bgm.resume();
+      } else {
+        // Se não tem música tocando, toca a do menu
+        playMenuMusic();
+      }
+    } else {
+      // Se mutou, pausa
+      FlameAudio.bgm.pause();
+    }
   }
 
   // ── Init ──────────────────────────────────────────────────────

@@ -1,9 +1,10 @@
 import 'dart:ui';
 import 'package:flame/components.dart';
+import 'engine_zone.dart' hide kBattleTotalTime, kZoneGraceTime;
 import 'snake_engine.dart';
-import 'engine_zone.dart' hide kBattleTotalTime;
 import '../utils/constants.dart';
 
+// Extensão para o minimapa
 extension EngineMinimap on SnakeEngine {
   void renderMinimap(Canvas canvas) {
     const double ms = kMinimapSize;

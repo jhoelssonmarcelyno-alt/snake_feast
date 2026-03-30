@@ -1,6 +1,8 @@
 // lib/overlays/shop_overlay.dart
 import 'package:flutter/material.dart';
 import '../game/snake_engine.dart';
+import '../game/skins/skin_manager.dart';
+import '../game/skins/skin_rarity.dart';
 import '../services/score_service.dart';
 import '../utils/constants.dart';
 
@@ -16,11 +18,13 @@ class _ShopOverlayState extends State<ShopOverlay>
   late final TabController _tab;
   String? _feedback;
   bool _feedbackOk = true;
+  late SkinManager _skinManager;
 
   @override
   void initState() {
     super.initState();
     _tab = TabController(length: 3, vsync: this);
+    _skinManager = SkinManager();
   }
 
   @override
@@ -42,17 +46,24 @@ class _ShopOverlayState extends State<ShopOverlay>
   }
 
   Future<void> _buySkin(SnakeSkin skin) async {
-    if (ScoreService.instance.isSkinUnlocked(skin.id)) {
+    final skinId = kPlayerSkins.indexOf(skin);
+
+    if (_skinManager.isSkinUnlocked(skinId)) {
       _equipSkin(skin);
       return;
     }
+
     final price = _skinPrice(skin);
-    final isDiamond = skin.rarity == 'lendaria' || skin.rarity == 'rara';
+    final isDiamond = skin.rarity == SkinRarity.legendary ||
+        skin.rarity == SkinRarity.epic ||
+        skin.rarity == SkinRarity.mythical;
+
     final ok = isDiamond
         ? await ScoreService.instance.spendDiamonds(price)
         : await ScoreService.instance.spendCoins(price);
+
     if (ok) {
-      await ScoreService.instance.unlockSkin(skin.id);
+      await _skinManager.unlockSkin(skinId);
       _equipSkin(skin);
       _showFeedback('✔ ${skin.name} desbloqueada!', true);
     } else {
@@ -65,7 +76,7 @@ class _ShopOverlayState extends State<ShopOverlay>
   void _equipSkin(SnakeSkin skin) {
     final idx = kPlayerSkins.indexWhere((s) => s.id == skin.id);
     if (idx < 0) return;
-    ScoreService.instance.saveSkinIndex(idx);
+    _skinManager.selectSkin(idx);
     widget.engine.setSkin(idx);
     _showFeedback('✔ ${skin.name} equipada!', true);
     setState(() {});
@@ -73,38 +84,50 @@ class _ShopOverlayState extends State<ShopOverlay>
 
   int _skinPrice(SnakeSkin skin) {
     switch (skin.rarity) {
-      case 'incomum':
+      case SkinRarity.uncommon:
         return 30;
-      case 'rara':
-        return 1;
-      case 'lendaria':
+      case SkinRarity.rare:
+        return 50;
+      case SkinRarity.epic:
+        return 80;
+      case SkinRarity.legendary:
         return 3;
+      case SkinRarity.mythical:
+        return 5;
       default:
         return 0;
     }
   }
 
-  Color _rarityColor(String rarity) {
+  Color _rarityColor(SkinRarity rarity) {
     switch (rarity) {
-      case 'incomum':
+      case SkinRarity.uncommon:
         return const Color(0xFF69F0AE);
-      case 'rara':
+      case SkinRarity.rare:
         return const Color(0xFF29CFFF);
-      case 'lendaria':
+      case SkinRarity.epic:
+        return const Color(0xFF9B59B6);
+      case SkinRarity.legendary:
         return const Color(0xFFFFD700);
+      case SkinRarity.mythical:
+        return const Color(0xFFFF4444);
       default:
         return Colors.white54;
     }
   }
 
-  String _rarityLabel(String rarity) {
+  String _rarityLabel(SkinRarity rarity) {
     switch (rarity) {
-      case 'incomum':
+      case SkinRarity.uncommon:
         return 'INCOMUM';
-      case 'rara':
+      case SkinRarity.rare:
         return 'RARA';
-      case 'lendaria':
+      case SkinRarity.epic:
+        return 'ÉPICA';
+      case SkinRarity.legendary:
         return '★ LENDÁRIA';
+      case SkinRarity.mythical:
+        return '⚡ MÍTICA';
       default:
         return 'COMUM';
     }
@@ -117,7 +140,7 @@ class _ShopOverlayState extends State<ShopOverlay>
     final revives = ScoreService.instance.revives;
     final revivePrice = ScoreService.instance.revivePrice;
     final mq = MediaQuery.of(context);
-    final equipped = ScoreService.instance.selectedSkin.id;
+    final equippedId = _skinManager.selectedSkinId;
 
     return Material(
       color: Colors.transparent,
@@ -250,14 +273,14 @@ class _ShopOverlayState extends State<ShopOverlay>
                           itemCount: kPlayerSkins.length,
                           itemBuilder: (_, i) {
                             final skin = kPlayerSkins[i];
-                            final unlocked =
-                                ScoreService.instance.isSkinUnlocked(skin.id) ||
-                                    skin.rarity == 'comum';
-                            final isEquipped = equipped == skin.id;
+                            final unlocked = _skinManager.isSkinUnlocked(i);
+                            final isEquipped = equippedId == i;
                             final price = _skinPrice(skin);
-                            final rColor = _rarityColor(skin.rarity);
-                            final isDiamond = skin.rarity == 'lendaria' ||
-                                skin.rarity == 'rara';
+                            final rarityColor = _rarityColor(skin.rarity);
+                            final isDiamond =
+                                skin.rarity == SkinRarity.legendary ||
+                                    skin.rarity == SkinRarity.mythical ||
+                                    skin.rarity == SkinRarity.epic;
 
                             return GestureDetector(
                               onTap: () => _buySkin(skin),
@@ -271,7 +294,7 @@ class _ShopOverlayState extends State<ShopOverlay>
                                   border: Border.all(
                                     color: isEquipped
                                         ? skin.accentColor
-                                        : rColor.withValues(alpha: 0.3),
+                                        : rarityColor.withValues(alpha: 0.3),
                                     width: isEquipped ? 2 : 1,
                                   ),
                                 ),
@@ -319,7 +342,7 @@ class _ShopOverlayState extends State<ShopOverlay>
                                                       TextDecoration.none)),
                                           Text(_rarityLabel(skin.rarity),
                                               style: TextStyle(
-                                                  color: rColor,
+                                                  color: rarityColor,
                                                   fontSize: 8,
                                                   letterSpacing: 1.5,
                                                   decoration:
